@@ -38,6 +38,111 @@
         </actions>
     </service>
 
+    <service verb="add" noun="BusinessLogicInFeedData">
+        <in-parameters>
+            <parameter name="orderMap" type="Map"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="orderMap"/>
+        </out-parameters>
+        <actions>
+            <log message="orderMap: ${orderMap.getClass()}"/>
+            <!-- Process Gift Card Payments -->
+            <entity-find entity-name="org.apache.ofbiz.order.order.OrderPaymentPreference" list="GiftCardPaymentList">
+                <econdition field-name="paymentMethodTypeId" value="EXT_GIFT_CARD"/>
+                <econdition field-name="orderId" from="orderMap.orderId"/>
+            </entity-find>
+
+            <!-- Initialize total amount for non-refunded gift cards -->
+            <set field="totalNonRefundedGiftCardAmount" from="0"/>
+
+            <!-- Logic to sum non-refunded gift card payments -->
+            <script><![CDATA[
+                def manualRefSet = new HashSet()
+                def refundedSet = new HashSet()
+
+                for (giftCardPayment in GiftCardPaymentList) {
+                    if (giftCardPayment.parentRefNumber) {
+                        refundedSet.add(giftCardPayment.parentRefNumber)
+                    }
+                }
+
+                for (giftCardPayment in GiftCardPaymentList) {
+                    if (!refundedSet.contains(giftCardPayment.manualRefNumber) && !manualRefSet.contains(giftCardPayment.manualRefNumber)) {
+                        totalNonRefundedGiftCardAmount += giftCardPayment.amount
+                        manualRefSet.add(giftCardPayment.manualRefNumber)
+                    }
+                }
+            ]]></script>
+
+            <!-- Add Gift Card Amount to the Order Map -->
+            <script><![CDATA[
+                if (totalNonRefundedGiftCardAmount > 0) {
+                    orderMap.put("totalNonRefundedGiftCardAmount", totalNonRefundedGiftCardAmount)
+                }
+            ]]></script>
+
+            <!-- Process Order Items -->
+            <set field="orderItemList" from="orderMap.orderItems"/>
+            <iterate list="orderItemList" entry="orderItem">
+                <log message="Processing orderItemSeqId: ${orderItem.orderItemSeqId}"/>
+
+                <!-- Determine if the item is closed -->
+                <script><![CDATA[
+                    boolean isClosed = "ITEM_CANCELLED".equalsIgnoreCase(orderItem.itemStatus);
+                    orderItem.put("closed", isClosed);
+                    orderItem.remove("itemStatus");
+                ]]></script>
+                <log message="shipmentMethodTypeId: ${orderItem.shipmentMethodTypeId}"/>
+
+                <!-- Map Shipping Method -->
+                <entity-find entity-name="co.hotwax.integration.IntegrationTypeMappingAndEnum" list="ShippingMethodMappingList">
+                    <econdition field-name="integrationTypeId" value="NETSUITE_SHP_MTHD"/>
+                    <econdition field-name="mappingKey" from="orderItem.shipmentMethodTypeId"/>
+                </entity-find>
+                <log message="ShippingMethodMappingList : ${ShippingMethodMappingList}"/>
+                <if condition="!ShippingMethodMappingList.isEmpty()">
+                    <script><![CDATA[
+                        orderItem.put("shippingMethod", ShippingMethodMappingList[0].mappingValue)
+                        orderItem.remove("shipmentMethodTypeId")
+                    ]]></script>
+                    <else>
+                        <!--TODO: currently setting the shipment method as empty as in case of pos_completed method we does not have itm available-->
+                        <script><![CDATA[
+                        orderItem.put("shippingMethod", "")
+                        orderItem.remove("shipmentMethodTypeId")
+                    ]]></script>
+                    </else>
+                </if>
+
+                <!-- Process Promotions -->
+                <entity-find entity-name="org.apache.ofbiz.order.order.OrderAdjustment" list="orderAdjustmentList">
+                    <econdition field-name="orderId" from="orderMap.orderId"/>
+                    <econdition field-name="orderItemSeqId" from="orderItem.orderItemSeqId"/>
+                    <econdition field-name="orderAdjustmentTypeId" value="EXT_PROMO_ADJUSTMENT"/>
+                </entity-find>
+
+                <if condition="orderAdjustmentList &amp;&amp; orderAdjustmentList.size() > 0">
+                    <log message="Promotions found for orderItemSeqId: ${orderItem.orderItemSeqId}"/>
+                    <set field="totalPromotionAmount" default-value="0" type="BigDecimal"/>
+                    <iterate list="orderAdjustmentList" entry="adjustment">
+                        <set field="totalPromotionAmount" from="totalPromotionAmount + adjustment.amount"/>
+                    </iterate>
+
+                    <!-- Duplicate Item for Promotion -->
+                    <!--TODO: currently making the copy as-is from the original item map need to re-visit this -->
+                    <script><![CDATA[
+                        Map<String, Object> promoOrderItemDetail = new HashMap<>(orderItem);
+                        promoOrderItemDetail.put("price", totalPromotionAmount);
+                        orderItemList.add(promoOrderItemDetail);
+                    ]]></script>
+                </if>
+            </iterate>
+            <!-- Prepare the Final Order Detail Map -->
+            <set field="orderDetailMap" from="orderMap"/>
+        </actions>
+    </service>
+
 
     <service verb="generate" noun="CreateOrderFeed" authenticate="anonymous-all" transaction-timeout="7200">
         <in-parameters>
@@ -78,14 +183,28 @@
             <if condition="systemMessageType == null">
                 <return error="true" message="Could not find SystemMessageType with ID ${systemMessageTypeId}"/>
             </if>
+
+            <!-- Prepare csv File Path -->
+            <set field="contentRoot" from="ec.user.getPreference('mantle.content.root') ?: 'dbresource://datamanager'"/>
+            <set field="csvFilePathRef" value="${contentRoot}/FulfilledOrderItemsFeed/${parentFacilityTypeId}/CreateOrderItemsFeed-${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd-HH-mm-ss', null, TimeZone.getDefault())}.csv"/>
+            <set field="csvFilePath" from="ec.resource.getLocationReference(csvFilePathRef).getUri().getPath()"/>
+
+
             <iterate list="ordersItr" entry="order">
+                <log message="orderID: ${order.orderId}"/>
                 <service-call name="co.hotwax.netsuite.CreateOrderService.prepare#OrdersFeedDataForNetSuite" in-map="[orderId:order.orderId]"
                     out-map="context"/>
-                <log message="print the order map after each itr: ${context.orderMap}"/>
+                <set field="orderMap" from="context?.orderMap"/>
+                <service-call name="co.hotwax.netsuite.CreateOrderService.add#BusinessLogicInFeedData" in-map="[orderMap:orderMap]"
+                    out-map="context"/>
+
+                <log message="print the order map after each itr: ${context?.orderMap}"/>
+
                 <entity-find-one entity-name="moqui.service.message.SystemMessageTypeParameter" value-field="groovyFileResource">
                     <field-map field-name="systemMessageTypeId" from="systemMessageTypeId"/>
                     <field-map field-name="parameterName" value="resourcePath"/>
                 </entity-find-one>
+
                 <if condition="groovyFileResource">
                     <log message="found a groovy file resource at ${groovyFileResource}"/>
                     <set field="scriptPath" from="groovyFileResource.parameterValue"/>

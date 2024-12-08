@@ -114,12 +114,17 @@
                 <date-filter/>
             </entity-condition>
         </member-entity>
+        <member-entity entity-alias="OISG" entity-name="org.apache.ofbiz.order.order.OrderItemShipGroup" join-from-alias="OI">
+            <key-map field-name="orderId"/>
+            <key-map field-name="shipGroupSeqId"/>
+        </member-entity>
         <alias name="orderItemSeqId" field="orderItemSeqId" entity-alias="OI"/>
         <alias name="orderId" field="orderId" entity-alias="OI"/>
         <alias name="price" field="unitPrice" entity-alias="OI"/>
         <alias name="quantity" field="quantity" entity-alias="OI"/>
         <alias name="itemStatus" field="statusId" entity-alias="OI"/>
         <alias name="NetSuiteProductId" field="idValue" entity-alias="GID"/>
+        <alias name="shipmentMethodTypeId" entity-alias="OISG"/>
     </view-entity>
 
     <view-entity entity-name="IntegrationTypeMappingAndEnum" package="co.hotwax.integration">
