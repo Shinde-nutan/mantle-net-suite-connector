@@ -43,10 +43,47 @@
             <parameter name="orderMap" type="Map"/>
         </in-parameters>
         <out-parameters>
-            <parameter name="orderMap"/>
+            <parameter name="orderMapDetail" type="Map"/>
         </out-parameters>
         <actions>
             <log message="orderMap: ${orderMap.getClass()}"/>
+
+            <!-- Create a New Map for Processed Data -->
+            <script><![CDATA[
+                Map<String, Object> processedOrderMap = new HashMap<>(orderMap);
+
+                 String preparePhoneNumber(String... parts) {
+                    return parts.findAll { it }?.join(' ') ?: null // Filter non-null and non-empty parts, join with space
+                }
+
+                // Prepare billing and shipping phone numbers
+                String billingPhone = preparePhoneNumber(orderMap.billingCountryCode, orderMap.billingAreaCode, orderMap.billingContactNumber)
+                String shippingPhone = preparePhoneNumber(orderMap.shippingCountryCode, orderMap.shippingAreaCode, orderMap.shippingContactNumber)
+
+                // Add results to the processed map, defaulting to empty string if null
+                processedOrderMap.billingPhone = billingPhone ?: " "
+                processedOrderMap.phone = shippingPhone ?: " "
+
+                // Remove the original phone-related fields from orderMap
+                processedOrderMap.remove("billingCountryCode")
+                processedOrderMap.remove("billingAreaCode")
+                processedOrderMap.remove("billingContactNumber")
+                processedOrderMap.remove("shippingCountryCode")
+                processedOrderMap.remove("shippingAreaCode")
+                processedOrderMap.remove("shippingContactNumber")
+
+                // Logic to use shipping address as billing address if billing details are missing
+                if (orderMap.billingContactMechId.isEmpty() && !orderMap.shippingContactMachId.isEmpty()) {
+                    log.info("Billing address is missing. Using shipping address as billing address.");
+                    processedOrderMap.put("billingAddress1", orderMap.shippingAddress1);
+                    processedOrderMap.put("billingAddress2", orderMap.shippingAddress2);
+                    processedOrderMap.put("billingCity", orderMap.shippingCity);
+                    processedOrderMap.put("billingState", orderMap.shippingState);
+                    processedOrderMap.put("billingCountry", orderMap.shippingCountry);
+                    processedOrderMap.put("billingPostalCode", orderMap.shippingPostalCode);
+                }
+            ]]></script>
+
             <!-- Process Gift Card Payments -->
             <entity-find entity-name="org.apache.ofbiz.order.order.OrderPaymentPreference" list="GiftCardPaymentList">
                 <econdition field-name="paymentMethodTypeId" value="EXT_GIFT_CARD"/>
@@ -78,20 +115,22 @@
             <!-- Add Gift Card Amount to the Order Map -->
             <script><![CDATA[
                 if (totalNonRefundedGiftCardAmount > 0) {
-                    orderMap.put("totalNonRefundedGiftCardAmount", totalNonRefundedGiftCardAmount)
+                    processedOrderMap.put("totalNonRefundedGiftCardAmount", totalNonRefundedGiftCardAmount)
                 }
             ]]></script>
 
             <!-- Process Order Items -->
             <set field="orderItemList" from="orderMap.orderItems"/>
+            <script><![CDATA[ List<Map<String, Object>> processedOrderItemList = new ArrayList<>(); ]]></script>
             <iterate list="orderItemList" entry="orderItem">
                 <log message="Processing orderItemSeqId: ${orderItem.orderItemSeqId}"/>
 
                 <!-- Determine if the item is closed -->
                 <script><![CDATA[
+                    Map<String, Object> processedOrderItem = new HashMap<>(orderItem);
                     boolean isClosed = "ITEM_CANCELLED".equalsIgnoreCase(orderItem.itemStatus);
-                    orderItem.put("closed", isClosed);
-                    orderItem.remove("itemStatus");
+                    processedOrderItem.put("closed", isClosed);
+                    processedOrderItem.remove("itemStatus");
                 ]]></script>
                 <log message="shipmentMethodTypeId: ${orderItem.shipmentMethodTypeId}"/>
 
@@ -103,14 +142,14 @@
                 <log message="ShippingMethodMappingList : ${ShippingMethodMappingList}"/>
                 <if condition="!ShippingMethodMappingList.isEmpty()">
                     <script><![CDATA[
-                        orderItem.put("shippingMethod", ShippingMethodMappingList[0].mappingValue)
-                        orderItem.remove("shipmentMethodTypeId")
+                        processedOrderItem.put("shippingMethod", ShippingMethodMappingList[0].mappingValue)
+                        processedOrderItem.remove("shipmentMethodTypeId")
                     ]]></script>
                     <else>
                         <!--TODO: currently setting the shipment method as empty as in case of pos_completed method we does not have itm available-->
                         <script><![CDATA[
-                        orderItem.put("shippingMethod", "")
-                        orderItem.remove("shipmentMethodTypeId")
+                        processedOrderItem.put("shippingMethod", "")
+                        processedOrderItem.remove("shipmentMethodTypeId")
                     ]]></script>
                     </else>
                 </if>
@@ -121,6 +160,8 @@
                     <econdition field-name="orderItemSeqId" from="orderItem.orderItemSeqId"/>
                     <econdition field-name="orderAdjustmentTypeId" value="EXT_PROMO_ADJUSTMENT"/>
                 </entity-find>
+
+                <script><![CDATA[processedOrderItemList.add(processedOrderItem);]]></script>
 
                 <if condition="orderAdjustmentList &amp;&amp; orderAdjustmentList.size() > 0">
                     <log message="Promotions found for orderItemSeqId: ${orderItem.orderItemSeqId}"/>
@@ -134,12 +175,16 @@
                     <script><![CDATA[
                         Map<String, Object> promoOrderItemDetail = new HashMap<>(orderItem);
                         promoOrderItemDetail.put("price", totalPromotionAmount);
-                        orderItemList.add(promoOrderItemDetail);
+                        processedOrderItemList.add(promoOrderItemDetail);
                     ]]></script>
                 </if>
             </iterate>
+            <!-- Add Processed Order Items to Processed Order Map -->
+            <script><![CDATA[ processedOrderMap.put("orderItems", processedOrderItemList); ]]></script>
             <!-- Prepare the Final Order Detail Map -->
-            <set field="orderDetailMap" from="orderMap"/>
+
+            <set field="orderMapDetail" from="processedOrderMap"/>
+            <log message="orderMapDetail: ${orderMapDetail}"/>
         </actions>
     </service>
 
@@ -154,6 +199,12 @@
             </parameter>
             <parameter name="systemMessageRemoteId" required="true">
                 <description>The System Message Remote Id for generating the Orders Feed for Netsuite.</description>
+            </parameter>
+            <parameter name="orderDate">
+                <description>Parameter to fetch Order details after specific order date</description>
+            </parameter>
+            <parameter name="salesChannel">
+                <description>Parameter to fetch Order details for specific sales channel</description>
             </parameter>
         </in-parameters>
         <actions>
@@ -192,26 +243,28 @@
 
             <iterate list="ordersItr" entry="order">
                 <log message="orderID: ${order.orderId}"/>
-                <service-call name="co.hotwax.netsuite.CreateOrderService.prepare#OrdersFeedDataForNetSuite" in-map="[orderId:order.orderId]"
+                <service-call name="co.hotwax.netsuite.OrderServices.prepare#OrdersFeedDataForNetSuite" in-map="[orderId:order.orderId]"
                     out-map="context"/>
                 <set field="orderMap" from="context?.orderMap"/>
-                <service-call name="co.hotwax.netsuite.CreateOrderService.add#BusinessLogicInFeedData" in-map="[orderMap:orderMap]"
-                    out-map="context"/>
+                <log message="orderMap: ${orderMap}"/>
+                <service-call name="co.hotwax.netsuite.OrderServices.add#BusinessLogicInFeedData" in-map="[orderMap:orderMap]"
+                    out-map="orderMapOut"/>
 
-                <log message="print the order map after each itr: ${context?.orderMap}"/>
+                <log message="print the order map after each itr: ${orderMapOut.orderMapDetail}"/>
 
                 <entity-find-one entity-name="moqui.service.message.SystemMessageTypeParameter" value-field="groovyFileResource">
                     <field-map field-name="systemMessageTypeId" from="systemMessageTypeId"/>
                     <field-map field-name="parameterName" value="resourcePath"/>
                 </entity-find-one>
-
                 <if condition="groovyFileResource">
                     <log message="found a groovy file resource at ${groovyFileResource}"/>
                     <set field="scriptPath" from="groovyFileResource.parameterValue"/>
+                    <log message="found a script path ${scriptPath}"/>
                     <script>
-                        Object result = ec.resource.script(scriptPath, null)
+                        Object result = ec.resource.script(scriptPath, null, null)
                     </script>
                 </if>
+                <log message="===============================result: ${result}=============="/>
             </iterate>
             <script>}</script>
         </actions>

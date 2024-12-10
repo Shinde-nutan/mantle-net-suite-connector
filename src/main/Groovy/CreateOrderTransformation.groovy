@@ -1,12 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<entity-facade-xml type="seed">
-    <moqui.resource.DbResource filename="netsuite" isFile="N" resourceId="Netsuite" parentResourceId=""/>
-    <moqui.resource.DbResource filename="groovy" isFile="N" resourceId="Groovy" parentResourceId="Netsuite"/>
-    <moqui.resource.DbResource filename="CreateOrderTransformationGroovy.groovy" isFile="Y" resourceId="CreateOrderTransformationGroovy" parentResourceId="Groovy">
-        <file mimeType="text/html" versionName="01" rootVersionName="01">
-            <fileData>
-                <![CDATA[
-               // Access the orderMapDetail from the input map
+// Access the orderMapDetail from the input map
 Map orderMapDetail = orderMapOut.orderMapDetail
 
 // Custom business logic for the fields
@@ -17,8 +9,7 @@ EntityValue OrderIdentification = ec.entity.find("co.hotwax.order.OrderIdentific
 String etailOrderId = OrderIdentification ? OrderIdentification.getString("idValue") : ""
 orderMapDetail.put("etailOrderId", etailOrderId)
 
-// Custom business logic for the fields
-EntityValue OrderCommunicationEvent = ec.entity.find("co.hotwax.integration.CommunicationEventAndOrder")
+EntityValue orderCommunicationEvent = ec.entity.find("co.hotwax.integration.CommunicationEventAndOrder")
     .condition("orderId", orderMapDetail.orderId)
     .condition("communicationEventTypeId", "ORDER_NOTE").one()
 
@@ -27,24 +18,39 @@ EntityList orderAttributes = ec.entity.find("org.apache.ofbiz.order.order.OrderA
     .useCache(true)
     .list()
 
+String isGiftWrap = "false"
 String giftWrapOption = ""
+String shipBooklets = "false"
 
 if (orderAttributes) {
     // Loop through the attributes and check for Option Font and Option Text
     orderAttributes.each { attribute ->
         if (attribute.attrName == "Gift Wrap Option") {
             giftWrapOption = attribute.attrValue
+            isGiftWrap = "true"
         }
+        if(attribute.attrName == "isShipBooklet")
+        isShipBooklet
     }
 }
-
 orderMapDetail.put("giftWrapOption", giftWrapOption)
+orderMapDetail.put("isGiftWrap", isGiftWrap)
 
-
-
-// Order Note
-String orderNote = OrderCommunicationEvent ? OrderCommunicationEvent.getString("content") : ""
+// Order Note 
+String orderNote = orderCommunicationEvent ? orderCommunicationEvent.getString("content") : ""
 orderMapDetail.put("orderNote", orderNote)
+
+Stind gorjanaSalesChannel = "orderMapDetail.salesChannel"
+orderMapDetail.put("gorjanaSalesChannel", gorjanaSalesChannel)
+
+if ("POS Channel" != orderMapDetail.salesChannel){
+
+    EntityValue defaultFacility = ec.entity.find("org.apache.ofbiz.product.facility.Facility")
+        .condition("facilityTypeId", "WAREHOUSE")
+        .condition("facilityId", "WH").one()
+    String location = defaultFacility ? defaultFacility.getString("externalId") : ""
+    orderMapDetail.put("location", defaultFacility.getIdValue())
+}
 
 // Loop through each order item
 orderMapDetail.orderItems.each { orderItem ->
@@ -59,6 +65,10 @@ orderMapDetail.orderItems.each { orderItem ->
     String optionFont = ""
     String optionText = ""
     String giftWrapText = ""
+    String finalSale = ""
+
+    // Set the default values for Option Font, Option Text, and Direction
+    optionFont = "Default Option Font"
 
     if (orderItemAttributes) {
         // Loop through the attributes and check for Option Font and Option Text
@@ -75,6 +85,9 @@ orderMapDetail.orderItems.each { orderItem ->
             if (attribute.attrName == "Gift Wrap") {
                 giftWrapText = attribute.attrValue
             }
+            if(attribute.attrName == "Final Sale"){
+                finalSale = attribute.attrValue
+            }
         }
         // If direction is available, append it to the Option Text
         if (direction) {
@@ -85,6 +98,7 @@ orderMapDetail.orderItems.each { orderItem ->
     orderItem.put("optionFont", optionFont)
     orderItem.put("OptionText", optionText)
     orderItem.put("GiftWraperText", giftWrapText)
+    orderItem.put("finalSale", finalSale)
 }
 
 System.out.println("orderMapDetail.orderItems")
@@ -94,10 +108,3 @@ orderData = orderMapDetail
 
 System.out.println("orderData"+ orderData)
 return orderData
-
-                ]]>
-            </fileData>
-            <histories versionName="01" previousVersionName="01"/>
-        </file>
-    </moqui.resource.DbResource>
-</entity-facade-xml>
