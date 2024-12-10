@@ -132,6 +132,9 @@
                     boolean isClosed = "ITEM_CANCELLED".equalsIgnoreCase(orderItem.itemStatus);
                     processedOrderItem.put("closed", isClosed);
                     processedOrderItem.remove("itemStatus");
+
+                    processedOrderItem.put("orderLineId", processedOrderItem.remove("orderItemSeqId"))
+
                 ]]></script>
 
                 <!-- Map Shipping Method -->
@@ -163,14 +166,9 @@
                     <script><![CDATA[
                         processedOrderItem.put("department", facilityIdentificationList[0].idValue)
                     ]]></script>
-                    <else>
-                        <!--TODO: currently setting the department as empty for orders other then POS orders
-                         this is handled in custom groovy script. -->
-                        <script><![CDATA[
-                            processedOrderItem.put("department", "")
-                        ]]></script>
-                    </else>
                 </if>
+
+                <script>processedOrderItemList.add(processedOrderItem);</script>
 
                 <!-- Process Promotions -->
                 <entity-find entity-name="org.apache.ofbiz.order.order.OrderAdjustment" list="orderAdjustmentList">
@@ -178,9 +176,6 @@
                     <econdition field-name="orderItemSeqId" from="orderItem.orderItemSeqId"/>
                     <econdition field-name="orderAdjustmentTypeId" value="EXT_PROMO_ADJUSTMENT"/>
                 </entity-find>
-
-                <script><![CDATA[processedOrderItemList.add(processedOrderItem);]]></script>
-
                 <if condition="orderAdjustmentList &amp;&amp; orderAdjustmentList.size() > 0">
 
                     <set field="totalPromotionAmount" default-value="0" type="BigDecimal"/>
@@ -197,8 +192,12 @@
                     ]]></script>
                 </if>
             </iterate>
+
             <!-- Add Processed Order Items to Processed Order Map -->
-            <script><![CDATA[ processedOrderMap.put("orderItems", processedOrderItemList); ]]></script>
+            <script><![CDATA[
+                processedOrderMap.put("externalId", processedOrderMap.remove("orderId"))
+                processedOrderMap.put("orderItems", processedOrderItemList);
+            ]]></script>
             <!-- Prepare the Final Order Detail Map -->
 
             <set field="orderMapDetail" from="processedOrderMap"/>
@@ -277,7 +276,6 @@
                     out-map="context"/>
                 <set field="orderMap" from="context?.orderMap"/>
                 <if condition="orderMap">
-
                     <service-call name="co.hotwax.netsuite.OrderServices.add#BusinessLogicInFeedData" in-map="[orderMap:orderMap]"
                         out-map="orderMapOut"/>
 
@@ -292,15 +290,19 @@
                             context.result = result
                         </script>
                         <else>
+                            <log message="No groovy file found"/>
                             <set field="result" from="orderMapOut.orderMapDetail"/>
                         </else>
                     </if>
+                    <log message="result: ${result}"/>
                     <script>
                         def order = context.get("result")
                         def orderItems = order.remove("orderItems")
+                        def orderId = order.remove("orderName")
                         def flattenedOrders = []
                         orderItems.each { item ->
-                            def flattenedOrder = [:] // Initialize a new map for the flattened order
+                            item.put("orderId", orderId)
+                            def flattenedOrder = [:]
                             flattenedOrder.putAll(order)
                             item.each { key, value -> flattenedOrder["$key"] = value }
                             flattenedOrders.add(flattenedOrder)
@@ -311,10 +313,7 @@
                         if (!csvHeaders) {
                             csvHeaders = flattenedOrders[0].keySet().collect { it as String }
                             csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withHeader(csvHeaders as String[]))
-
                         }
-
-                        System.out.println("flattenedOrders"+ flattenedOrders)
 
                         // Write rows to the CSV
                         if (csvPrinter  &amp;&amp; !flattenedOrders.isEmpty()) {
@@ -331,54 +330,15 @@
                 if (csvPrinter) {
                     csvPrinter.flush()
                     csvPrinter.close()
-                    System.out.println("CSV Printer flushed and closed.")
                 }
             </script>
-            <log message="CSV file generated successfully at ${csvFilePathRef}" />
+<!--            &lt;!&ndash; Save the Json Feed File path in System Message messageText &ndash;&gt;-->
+<!--            <service-call name="org.moqui.impl.SystemMessageServices.receive#IncomingSystemMessage"-->
+<!--                in-map="[systemMessageTypeId:systemMessageTypeId, systemMessageRemoteId:systemMessageRemoteId,-->
+<!--                messageText:csvFilePath]" out-map="FeedSysMsgOut"/>-->
+
+<!--            <log message="Generating  Order Items Feed file with type ${systemMessageTypeId} and-->
+<!--                remote ${systemMessageRemoteId} saved response in messages ${FeedSysMsgOut.systemMessageIdList}"/>-->
         </actions>
     </service>
 </services>
-
-
-
-
-<!--<script><![CDATA[
-            }
-
-            // Prepare headers once before writing
-            if (!csvPrinter && allOrderData.size() > 0) {
-                // Prepare headers once based on the first order's keys
-                def csvHeaders = allOrderData[0].keySet().collect { it as String }
-                csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withHeader(csvHeaders as String[]))
-
-                // Log headers for debugging
-                System.out.println("=====================csvHeaders==================" + csvHeaders );
-            }
-
-            // Write all the collected order data to the CSV file at once
-            allOrderData.each { flatItem ->
-                csvPrinter.printRecord(flatItem.values())
-            }
-
-            // Close writer and flush CSVPrinter
-            System.out.println("==========csvPrinter:" + csvPrinter + " writer:" + writer);
-            csvPrinter.flush()
-            writer.close()
-        ]]></script>-->
-<!--
-<script>
-// Collect order data to be written to CSV after the iteration
-def orderData = []
-// Flatten the data for each order
-if (result.orderItems) {
-result.orderItems.each { item ->
-def flatItem = [:]
-result.each { key, value -> flatItem[key] = value }
-item.each { k, v -> flatItem["${k}"] = v }
-orderData.add(flatItem)
-}
-}
-orderData.remove(orderItems)
-System.out.println("=========================" + orderData + "=========================");
-allOrderData.addAll(orderData)
-</script>-->

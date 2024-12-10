@@ -46,24 +46,30 @@ orderMapDetail.put("isGiftWrap", isGiftWrap)
 
 // Order Note
 String orderNote = orderCommunicationEvent ? orderCommunicationEvent.getString("content") : ""
+// Remove the \n character from the orderNote
+orderNote = orderNote.replace("\n", " ")
 orderMapDetail.put("orderNote", orderNote)
 
 String gorjanaSalesChannel = orderMapDetail.salesChannel
 orderMapDetail.put("gorjanaSalesChannel", gorjanaSalesChannel)
 
-if ("POS Channel" != orderMapDetail.salesChannel){
 
-    EntityValue defaultFacility = ec.entity.find("org.apache.ofbiz.product.facility.Facility")
-        .condition("facilityTypeId", "WAREHOUSE")
-        .condition("facilityId", "WH").one()
-    String location = defaultFacility ? defaultFacility.getString("externalId") : ""
-    orderMapDetail.put("location", location)
-    orderMapDetail.put("department", "2")
+BigDecimal hcOrderTotal = BigDecimal.ZERO
 
-}
 
 // Loop through each order item
 orderMapDetail.orderItems.each { orderItem ->
+
+    if ("POS Channel" != orderMapDetail.salesChannel){
+
+        EntityValue defaultFacility = ec.entity.find("org.apache.ofbiz.product.facility.Facility")
+            .condition("facilityTypeId", "WAREHOUSE")
+            .condition("facilityId", "WH").one()
+        String location = defaultFacility ? defaultFacility.getString("externalId") : ""
+        orderItem.put("location", location)
+        orderItem.put("department", "2")
+    }
+
     // Query the OrderItemAttribute entity for Option Font and Option Text at the item level
      EntityList orderItemAttributes = ec.entity.find("org.apache.ofbiz.order.order.OrderItemAttribute")
         .condition("orderId", orderItem.orderId)
@@ -113,6 +119,7 @@ orderMapDetail.orderItems.each { orderItem ->
 
 // Return the updated orderMapDetail
 orderData = orderMapDetail
+System.out.println(orderData.location)
 return orderData
                 ]]>
             </fileData>
