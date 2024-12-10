@@ -40,7 +40,7 @@ orderMapDetail.put("isGiftWrap", isGiftWrap)
 String orderNote = orderCommunicationEvent ? orderCommunicationEvent.getString("content") : ""
 orderMapDetail.put("orderNote", orderNote)
 
-Stind gorjanaSalesChannel = "orderMapDetail.salesChannel"
+String gorjanaSalesChannel = orderMapDetail.salesChannel
 orderMapDetail.put("gorjanaSalesChannel", gorjanaSalesChannel)
 
 if ("POS Channel" != orderMapDetail.salesChannel){
@@ -49,7 +49,9 @@ if ("POS Channel" != orderMapDetail.salesChannel){
         .condition("facilityTypeId", "WAREHOUSE")
         .condition("facilityId", "WH").one()
     String location = defaultFacility ? defaultFacility.getString("externalId") : ""
-    orderMapDetail.put("location", defaultFacility.getIdValue())
+    orderMapDetail.put("location", location)
+    orderMapDetail.put("department", "2")
+
 }
 
 // Loop through each order item
@@ -101,10 +103,6 @@ orderMapDetail.orderItems.each { orderItem ->
     orderItem.put("finalSale", finalSale)
 }
 
-System.out.println("orderMapDetail.orderItems")
 // Return the updated orderMapDetail
 orderData = orderMapDetail
-
-
-System.out.println("orderData"+ orderData)
 return orderData

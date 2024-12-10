@@ -23,8 +23,8 @@
             </entity-find>
 
             <if condition="!orderItemsList">
-                <log message="There is no eligible order items for this order"/>
-                <return/>
+                <set field="orderMap" from="[]"/>
+                <return message="There is no eligible order items for this order" />
             </if>
 
             <iterate list="orderItemsList" entry="orderItem">
@@ -46,7 +46,6 @@
             <parameter name="orderMapDetail" type="Map"/>
         </out-parameters>
         <actions>
-            <log message="orderMap: ${orderMap.getClass()}"/>
 
             <!-- Create a New Map for Processed Data -->
             <script><![CDATA[
@@ -73,7 +72,7 @@
                 processedOrderMap.remove("shippingContactNumber")
 
                 // Logic to use shipping address as billing address if billing details are missing
-                if (orderMap.billingContactMechId.isEmpty() && !orderMap.shippingContactMachId.isEmpty()) {
+                if (!orderMap.billingContactMechId && orderMap.shippingContactMachId) {
                     log.info("Billing address is missing. Using shipping address as billing address.");
                     processedOrderMap.put("billingAddress1", orderMap.shippingAddress1);
                     processedOrderMap.put("billingAddress2", orderMap.shippingAddress2);
@@ -117,14 +116,16 @@
                 if (totalNonRefundedGiftCardAmount > 0) {
                     processedOrderMap.put("totalNonRefundedGiftCardAmount", totalNonRefundedGiftCardAmount)
                 }
+                processedOrderMap.put("taxCode", "AVATAX")
+                if ("POS Channel" != orderMap.salesChannel){
+                    processedOrderMap.put("shippingTaxCode", "AVATAX")
+                }
             ]]></script>
-
+            
             <!-- Process Order Items -->
             <set field="orderItemList" from="orderMap.orderItems"/>
             <script><![CDATA[ List<Map<String, Object>> processedOrderItemList = new ArrayList<>(); ]]></script>
             <iterate list="orderItemList" entry="orderItem">
-                <log message="Processing orderItemSeqId: ${orderItem.orderItemSeqId}"/>
-
                 <!-- Determine if the item is closed -->
                 <script><![CDATA[
                     Map<String, Object> processedOrderItem = new HashMap<>(orderItem);
@@ -132,14 +133,12 @@
                     processedOrderItem.put("closed", isClosed);
                     processedOrderItem.remove("itemStatus");
                 ]]></script>
-                <log message="shipmentMethodTypeId: ${orderItem.shipmentMethodTypeId}"/>
 
                 <!-- Map Shipping Method -->
                 <entity-find entity-name="co.hotwax.integration.IntegrationTypeMappingAndEnum" list="ShippingMethodMappingList">
                     <econdition field-name="integrationTypeId" value="NETSUITE_SHP_MTHD"/>
                     <econdition field-name="mappingKey" from="orderItem.shipmentMethodTypeId"/>
                 </entity-find>
-                <log message="ShippingMethodMappingList : ${ShippingMethodMappingList}"/>
                 <if condition="!ShippingMethodMappingList.isEmpty()">
                     <script><![CDATA[
                         processedOrderItem.put("shippingMethod", ShippingMethodMappingList[0].mappingValue)
@@ -154,6 +153,25 @@
                     </else>
                 </if>
 
+                <entity-find entity-name="co.hotwax.facility.FacilityIdentification" list="facilityIdentificationList">
+                    <econdition field-name="facilityId" from="orderItem.location"/>
+                    <econdition field-name="facilityIdenTypeId" value="ORDR_ORGN_DPT"/>
+                    <date-filter/>
+                </entity-find>
+
+                <if condition="!facilityIdentificationList.isEmpty() &amp;&amp; 'POS Channel' == orderMap.salesChannel">
+                    <script><![CDATA[
+                        processedOrderItem.put("department", facilityIdentificationList[0].idValue)
+                    ]]></script>
+                    <else>
+                        <!--TODO: currently setting the department as empty for orders other then POS orders
+                         this is handled in custom groovy script. -->
+                        <script><![CDATA[
+                            processedOrderItem.put("department", "")
+                        ]]></script>
+                    </else>
+                </if>
+
                 <!-- Process Promotions -->
                 <entity-find entity-name="org.apache.ofbiz.order.order.OrderAdjustment" list="orderAdjustmentList">
                     <econdition field-name="orderId" from="orderMap.orderId"/>
@@ -164,7 +182,7 @@
                 <script><![CDATA[processedOrderItemList.add(processedOrderItem);]]></script>
 
                 <if condition="orderAdjustmentList &amp;&amp; orderAdjustmentList.size() > 0">
-                    <log message="Promotions found for orderItemSeqId: ${orderItem.orderItemSeqId}"/>
+
                     <set field="totalPromotionAmount" default-value="0" type="BigDecimal"/>
                     <iterate list="orderAdjustmentList" entry="adjustment">
                         <set field="totalPromotionAmount" from="totalPromotionAmount + adjustment.amount"/>
@@ -184,10 +202,8 @@
             <!-- Prepare the Final Order Detail Map -->
 
             <set field="orderMapDetail" from="processedOrderMap"/>
-            <log message="orderMapDetail: ${orderMapDetail}"/>
         </actions>
     </service>
-
 
     <service verb="generate" noun="CreateOrderFeed" authenticate="anonymous-all" transaction-timeout="7200">
         <in-parameters>
@@ -200,7 +216,10 @@
             <parameter name="systemMessageRemoteId" required="true">
                 <description>The System Message Remote Id for generating the Orders Feed for Netsuite.</description>
             </parameter>
-            <parameter name="orderDate">
+            <parameter name="fromOrderDate">
+                <description>Parameter to fetch Order details after specific order date</description>
+            </parameter>
+            <parameter name="thruOrderDate">
                 <description>Parameter to fetch Order details after specific order date</description>
             </parameter>
             <parameter name="salesChannel">
@@ -210,15 +229,33 @@
         <actions>
             <set field="nowDate" from="ec.user.nowTimestamp"/>
             <log message="Generating Create Orders Feed file of HotWax for Order ${orderId} at time ${nowDate}"/>
+            <!-- Prepare csv File Path -->
+            <set field="contentRoot" from="ec.user.getPreference('mantle.content.root') ?: 'dbresource://datamanager'"/>
+            <set field="csvFilePathRef" value="${contentRoot}/NetsuiteOrderFeed/CreateOrderItemsFeed-${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd-HH-mm-ss', null, TimeZone.getDefault())}.csv"/>
+            <set field="csvFilePath" from="ec.resource.getLocationReference(csvFilePathRef).getUri().getPath()"/>
+
             <script>
-                import com.fasterxml.jackson.core.JsonGenerator
-                import com.fasterxml.jackson.core.JsonFactory
-                import com.fasterxml.jackson.databind.ObjectMapper
+
+                import org.apache.commons.csv.CSVFormat
+                import org.apache.commons.csv.CSVPrinter
+                import java.nio.file.Files
+                import java.nio.file.Paths
                 import java.nio.charset.StandardCharsets
                 import org.moqui.entity.EntityCondition
 
+                File csvFile = new File(csvFilePath)
+                if (!csvFile.parentFile.exists()) { csvFile.parentFile.mkdirs()}
+
+                // Prepare CSV Writer
+                def writer = Files.newBufferedWriter(Paths.get(csvFilePath), StandardCharsets.UTF_8)
+                def csvHeaders = null
+                def csvPrinter = null
+
                 netsuiteOrders_find = ec.entity.find("co.hotwax.order.EligibleOrdersForNetSuiteView")
                 if(orderId) netsuiteOrders_find.condition("orderId", orderId)
+                if(salesChannel) netsuiteOrders_find.condition("salesChannelEnumId", salesChannel)
+                if(fromOrderDate) netsuiteOrders_find.condition("orderDate", EntityCondition.ComparisonOperator.GREATER_THAN, fromOrderDate)
+                if(thruOrderDate) netsuiteOrders_find.condition("orderDate", EntityCondition.ComparisonOperator.LESS_THAN, fromOrderDate)
 
                 // Using try-with-resources to automatically close the EntityListIterator 'ordersItr'
                 try (ordersItr = netsuiteOrders_find.iterator()) {
@@ -235,39 +272,113 @@
                 <return error="true" message="Could not find SystemMessageType with ID ${systemMessageTypeId}"/>
             </if>
 
-            <!-- Prepare csv File Path -->
-            <set field="contentRoot" from="ec.user.getPreference('mantle.content.root') ?: 'dbresource://datamanager'"/>
-            <set field="csvFilePathRef" value="${contentRoot}/FulfilledOrderItemsFeed/${parentFacilityTypeId}/CreateOrderItemsFeed-${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd-HH-mm-ss', null, TimeZone.getDefault())}.csv"/>
-            <set field="csvFilePath" from="ec.resource.getLocationReference(csvFilePathRef).getUri().getPath()"/>
-
-
             <iterate list="ordersItr" entry="order">
-                <log message="orderID: ${order.orderId}"/>
                 <service-call name="co.hotwax.netsuite.OrderServices.prepare#OrdersFeedDataForNetSuite" in-map="[orderId:order.orderId]"
                     out-map="context"/>
                 <set field="orderMap" from="context?.orderMap"/>
-                <log message="orderMap: ${orderMap}"/>
-                <service-call name="co.hotwax.netsuite.OrderServices.add#BusinessLogicInFeedData" in-map="[orderMap:orderMap]"
-                    out-map="orderMapOut"/>
+                <if condition="orderMap">
 
-                <log message="print the order map after each itr: ${orderMapOut.orderMapDetail}"/>
+                    <service-call name="co.hotwax.netsuite.OrderServices.add#BusinessLogicInFeedData" in-map="[orderMap:orderMap]"
+                        out-map="orderMapOut"/>
 
-                <entity-find-one entity-name="moqui.service.message.SystemMessageTypeParameter" value-field="groovyFileResource">
-                    <field-map field-name="systemMessageTypeId" from="systemMessageTypeId"/>
-                    <field-map field-name="parameterName" value="resourcePath"/>
-                </entity-find-one>
-                <if condition="groovyFileResource">
-                    <log message="found a groovy file resource at ${groovyFileResource}"/>
-                    <set field="scriptPath" from="groovyFileResource.parameterValue"/>
-                    <log message="found a script path ${scriptPath}"/>
+                    <entity-find-one entity-name="moqui.service.message.SystemMessageTypeParameter" value-field="groovyFileResource">
+                        <field-map field-name="systemMessageTypeId" from="systemMessageTypeId"/>
+                        <field-map field-name="parameterName" value="resourcePath"/>
+                    </entity-find-one>
+                    <if condition="groovyFileResource">
+                        <set field="scriptPath" from="groovyFileResource.parameterValue"/>
+                        <script>
+                            Object result = ec.resource.script(scriptPath, null)
+                            context.result = result
+                        </script>
+                        <else>
+                            <set field="result" from="orderMapOut.orderMapDetail"/>
+                        </else>
+                    </if>
                     <script>
-                        Object result = ec.resource.script(scriptPath, null, null)
+                        def order = context.get("result")
+                        def orderItems = order.remove("orderItems")
+                        def flattenedOrders = []
+                        orderItems.each { item ->
+                            def flattenedOrder = [:] // Initialize a new map for the flattened order
+                            flattenedOrder.putAll(order)
+                            item.each { key, value -> flattenedOrder["$key"] = value }
+                            flattenedOrders.add(flattenedOrder)
+                        }
+                        context.flattenedOrders = flattenedOrders
+
+                        // Dynamically determine headers in the first iteration
+                        if (!csvHeaders) {
+                            csvHeaders = flattenedOrders[0].keySet().collect { it as String }
+                            csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withHeader(csvHeaders as String[]))
+
+                        }
+
+                        System.out.println("flattenedOrders"+ flattenedOrders)
+
+                        // Write rows to the CSV
+                        if (csvPrinter  &amp;&amp; !flattenedOrders.isEmpty()) {
+                            System.out.println("writing the data in csv file")
+                            flattenedOrders.each { record ->
+                                csvPrinter.printRecord(record.values())
+                            }
+                        }
                     </script>
                 </if>
-                <log message="===============================result: ${result}=============="/>
             </iterate>
-            <script>}</script>
+            <script>
+                }
+                if (csvPrinter) {
+                    csvPrinter.flush()
+                    csvPrinter.close()
+                    System.out.println("CSV Printer flushed and closed.")
+                }
+            </script>
+            <log message="CSV file generated successfully at ${csvFilePathRef}" />
         </actions>
-
     </service>
 </services>
+
+
+
+
+<!--<script><![CDATA[
+            }
+
+            // Prepare headers once before writing
+            if (!csvPrinter && allOrderData.size() > 0) {
+                // Prepare headers once based on the first order's keys
+                def csvHeaders = allOrderData[0].keySet().collect { it as String }
+                csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withHeader(csvHeaders as String[]))
+
+                // Log headers for debugging
+                System.out.println("=====================csvHeaders==================" + csvHeaders );
+            }
+
+            // Write all the collected order data to the CSV file at once
+            allOrderData.each { flatItem ->
+                csvPrinter.printRecord(flatItem.values())
+            }
+
+            // Close writer and flush CSVPrinter
+            System.out.println("==========csvPrinter:" + csvPrinter + " writer:" + writer);
+            csvPrinter.flush()
+            writer.close()
+        ]]></script>-->
+<!--
+<script>
+// Collect order data to be written to CSV after the iteration
+def orderData = []
+// Flatten the data for each order
+if (result.orderItems) {
+result.orderItems.each { item ->
+def flatItem = [:]
+result.each { key, value -> flatItem[key] = value }
+item.each { k, v -> flatItem["${k}"] = v }
+orderData.add(flatItem)
+}
+}
+orderData.remove(orderItems)
+System.out.println("=========================" + orderData + "=========================");
+allOrderData.addAll(orderData)
+</script>-->
