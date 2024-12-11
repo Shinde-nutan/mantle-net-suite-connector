@@ -305,6 +305,8 @@
                             item.put("orderId", orderId)
                             item.remove("orderItemSeqId")
                             item.remove("isDiscountRow")
+                            item.remove("productId")
+                            item.put("item", item.remove("NetSuiteProductId"))
                             def flattenedOrder = [:]
                             flattenedOrder.putAll(order)
                             item.each { key, value -> flattenedOrder["$key"] = value }
@@ -335,13 +337,13 @@
                     csvPrinter.close()
                 }
             </script>
-<!--            &lt;!&ndash; Save the Json Feed File path in System Message messageText &ndash;&gt;-->
-<!--            <service-call name="org.moqui.impl.SystemMessageServices.receive#IncomingSystemMessage"-->
-<!--                in-map="[systemMessageTypeId:systemMessageTypeId, systemMessageRemoteId:systemMessageRemoteId,-->
-<!--                messageText:csvFilePath]" out-map="FeedSysMsgOut"/>-->
+            <!-- Save the Json Feed File path in System Message messageText -->
+            <service-call name="org.moqui.impl.SystemMessageServices.receive#IncomingSystemMessage"
+                in-map="[systemMessageTypeId:systemMessageTypeId, systemMessageRemoteId:systemMessageRemoteId,
+                messageText:csvFilePath]" out-map="FeedSysMsgOut"/>
 
-<!--            <log message="Generating  Order Items Feed file with type ${systemMessageTypeId} and-->
-<!--                remote ${systemMessageRemoteId} saved response in messages ${FeedSysMsgOut.systemMessageIdList}"/>-->
+            <log message="Generating  Order Items Feed file with type ${systemMessageTypeId} and
+                remote ${systemMessageRemoteId} saved response in messages ${FeedSysMsgOut.systemMessageIdList}"/>
         </actions>
     </service>
 </services>

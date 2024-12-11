@@ -58,6 +58,15 @@ if (orderLevelAdjustment) {
 // Loop through each order item
 orderMapDetail.orderItems.each { orderItem ->
 
+    EntityValue ProductDetail = ec.entity.find("org.apache.ofbiz.product.product.Product")
+        .condition("productId", orderItem.productId ).one()
+    String packingCategory = ""
+    if("MARKETING_PKG_PICK" == ProductDetail.productTypeId){
+        packingCategory = "4"
+    }
+    orderItem.put("packingCategory", packingCategory)
+
+
     if ("POS Channel" != orderMapDetail.salesChannel){
         EntityValue defaultFacility = ec.entity.find("org.apache.ofbiz.product.facility.Facility")
             .condition("facilityTypeId", "WAREHOUSE")
@@ -131,15 +140,6 @@ orderMapDetail.orderItems.each { orderItem ->
     orderItem.put("OptionText", optionText)
     orderItem.put("GiftWraperText", giftWrapText)
     orderItem.put("finalSale", finalSale)
-
-    EntityValue ProductType = ec.entity.find("org.apache.ofbiz.product.product.ProductType\"")
-        .condition("productId",orderItem.productId).one()
-    String packingCategory = ""
-    if("MARKETING_PKG_PICK"== productType.getSting("productTypeId")){
-        packingCategory = "4"
-    }
-    orderItem.put("packingCategory", packingCategory)
-
 }
 
 orderMapDetail.put("hcOrderTotal", hcOrderTotal)
