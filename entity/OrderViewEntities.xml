@@ -159,6 +159,7 @@
         <alias name="price" field="unitPrice" entity-alias="OI"/>
         <alias name="quantity" field="quantity" entity-alias="OI"/>
         <alias name="itemStatus" field="statusId" entity-alias="OI"/>
+        <alias name="productId" field="productId" entity-alias="OI"/>
         <alias name="NetSuiteProductId" field="idValue" entity-alias="GID"/>
         <alias name="shipmentMethodTypeId" entity-alias="OISG"/>
         <alias name="location" field="facilityId" entity-alias="OISG"/>

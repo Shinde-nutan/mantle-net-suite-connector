@@ -90,7 +90,7 @@
             </entity-find>
 
             <!-- Initialize total amount for non-refunded gift cards -->
-            <set field="totalNonRefundedGiftCardAmount" from="0"/>
+            <set field="totalNonRefundedGiftCardAmount" type="Integer"/>
 
             <!-- Logic to sum non-refunded gift card payments -->
             <script><![CDATA[
@@ -113,12 +113,13 @@
 
             <!-- Add Gift Card Amount to the Order Map -->
             <script><![CDATA[
-                if (totalNonRefundedGiftCardAmount > 0) {
-                    processedOrderMap.put("totalNonRefundedGiftCardAmount", totalNonRefundedGiftCardAmount)
-                }
+                processedOrderMap.put("HCGiftCardPayment", totalNonRefundedGiftCardAmount)
                 processedOrderMap.put("taxCode", "AVATAX")
                 if ("POS Channel" != orderMap.salesChannel){
                     processedOrderMap.put("shippingTaxCode", "AVATAX")
+                }
+                else{
+                    processedOrderMap.put("shippingTaxCode", "")
                 }
             ]]></script>
             
@@ -132,8 +133,8 @@
                     boolean isClosed = "ITEM_CANCELLED".equalsIgnoreCase(orderItem.itemStatus);
                     processedOrderItem.put("closed", isClosed);
                     processedOrderItem.remove("itemStatus");
-
-                    processedOrderItem.put("orderLineId", processedOrderItem.remove("orderItemSeqId"))
+                    processedOrderItem.put("orderLineId", processedOrderItem.orderItemSeqId)
+                    processedOrderItem.put("priceLevel", "custom")
 
                 ]]></script>
 
@@ -186,8 +187,9 @@
                     <!-- Duplicate Item for Promotion -->
                     <!--TODO: currently making the copy as-is from the original item map need to re-visit this -->
                     <script><![CDATA[
-                        Map<String, Object> promoOrderItemDetail = new HashMap<>(orderItem);
+                        Map<String, Object> promoOrderItemDetail = new HashMap<>(processedOrderItem);
                         promoOrderItemDetail.put("price", totalPromotionAmount);
+                        promoOrderItemDetail.put("isDiscountRow", "true");
                         processedOrderItemList.add(promoOrderItemDetail);
                     ]]></script>
                 </if>
@@ -195,7 +197,7 @@
 
             <!-- Add Processed Order Items to Processed Order Map -->
             <script><![CDATA[
-                processedOrderMap.put("externalId", processedOrderMap.remove("orderId"))
+                processedOrderMap.put("externalId", processedOrderMap.orderId)
                 processedOrderMap.put("orderItems", processedOrderItemList);
             ]]></script>
             <!-- Prepare the Final Order Detail Map -->
@@ -294,7 +296,6 @@
                             <set field="result" from="orderMapOut.orderMapDetail"/>
                         </else>
                     </if>
-                    <log message="result: ${result}"/>
                     <script>
                         def order = context.get("result")
                         def orderItems = order.remove("orderItems")
@@ -302,6 +303,8 @@
                         def flattenedOrders = []
                         orderItems.each { item ->
                             item.put("orderId", orderId)
+                            item.remove("orderItemSeqId")
+                            item.remove("isDiscountRow")
                             def flattenedOrder = [:]
                             flattenedOrder.putAll(order)
                             item.each { key, value -> flattenedOrder["$key"] = value }

@@ -1,7 +1,6 @@
 // Access the orderMapDetail from the input map
 Map orderMapDetail = orderMapOut.orderMapDetail
 
-// Custom business logic for the fields
 EntityValue OrderIdentification = ec.entity.find("co.hotwax.order.OrderIdentification")
     .condition("orderId",orderMapDetail.orderId)
     .condition("orderIdentificationTypeId", "SHOPIFY_ORD_ID").one()
@@ -45,15 +44,21 @@ orderMapDetail.put("orderNote", orderNote)
 String gorjanaSalesChannel = orderMapDetail.salesChannel
 orderMapDetail.put("gorjanaSalesChannel", gorjanaSalesChannel)
 
-
 BigDecimal hcOrderTotal = BigDecimal.ZERO
 
+EntityList orderLevelAdjustment = ec.entity.find("co.hotwax.order.OrderItemAdjustmentAndAttribute")
+    .condition("orderId", orderMapDetail.orderId)
+    .condition("orderItemSeqId", "_NA_").list()
 
+if (orderLevelAdjustment) {
+    System.out.println("orderLevelAdjustment:" + orderLevelAdjustment)
+    BigDecimal orderLevelAdjustmentTotal = orderLevelAdjustment.collect { adj -> adj.getBigDecimal("amount") ?: BigDecimal.ZERO }.sum()
+    hcOrderTotal = hcOrderTotal.add(orderLevelAdjustmentTotal)
+}
 // Loop through each order item
 orderMapDetail.orderItems.each { orderItem ->
 
     if ("POS Channel" != orderMapDetail.salesChannel){
-
         EntityValue defaultFacility = ec.entity.find("org.apache.ofbiz.product.facility.Facility")
             .condition("facilityTypeId", "WAREHOUSE")
             .condition("facilityId", "WH").one()
@@ -62,6 +67,28 @@ orderMapDetail.orderItems.each { orderItem ->
         orderItem.put("department", "2")
     }
 
+    // Calculate item total: unitPrice * quantity
+    BigDecimal unitPrice = (orderItem?.get("price") as BigDecimal)
+    BigDecimal quantity = (orderItem?.get("quantity") as BigDecimal)
+    BigDecimal itemTotal = unitPrice * quantity
+    hcOrderTotal = hcOrderTotal.add(itemTotal)
+
+    EntityList orderItemLevelAdjustment = ec.entity.find("co.hotwax.order.OrderItemAdjustmentAndAttribute")
+        .condition("orderId", orderMapDetail.orderId)
+        .condition("orderItemSeqId", orderItem.orderItemSeqId).list()
+
+    if(orderItemLevelAdjustment) {
+        BigDecimal itemAdjustmentTotal = orderItemLevelAdjustment.collect { adj -> adj.get("amount") ?: BigDecimal.ZERO }.sum()
+        hcOrderTotal = hcOrderTotal.add(itemAdjustmentTotal)
+    }
+
+    String orderLineTypeId = ""
+
+    if(orderItem.isDiscountRow){
+        orderLineTypeId = "HC_DISCOUNT_${orderItem.orderItemSeqId}"
+    }
+
+    orderItem.put("orderLineTypeId", orderLineTypeId)
     // Query the OrderItemAttribute entity for Option Font and Option Text at the item level
      EntityList orderItemAttributes = ec.entity.find("org.apache.ofbiz.order.order.OrderItemAttribute")
         .condition("orderId", orderItem.orderId)
@@ -104,9 +131,18 @@ orderMapDetail.orderItems.each { orderItem ->
     orderItem.put("OptionText", optionText)
     orderItem.put("GiftWraperText", giftWrapText)
     orderItem.put("finalSale", finalSale)
+
+    EntityValue ProductType = ec.entity.find("org.apache.ofbiz.product.product.ProductType\"")
+        .condition("productId",orderItem.productId).one()
+    String packingCategory = ""
+    if("MARKETING_PKG_PICK"== productType.getSting("productTypeId")){
+        packingCategory = "4"
+    }
+    orderItem.put("packingCategory", packingCategory)
+
 }
 
+orderMapDetail.put("hcOrderTotal", hcOrderTotal)
 // Return the updated orderMapDetail
 orderData = orderMapDetail
-System.out.println(orderData.location)
 return orderData
