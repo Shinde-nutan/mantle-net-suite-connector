@@ -223,13 +223,31 @@
             <parameter name="thruOrderDate">
                 <description>Parameter to fetch Order details after specific order date</description>
             </parameter>
-            <parameter name="salesChannel">
+            <!--This parameters are required to be configured in the service for the following cases:
+             1. when we schedule this job twice in an instance
+                a) First for POS orders: where we include the orders of "POS_SALES_CHANNEL"
+                b) Second for all other orders: where we exclude the orders from the "POS_SALES_CHANNEL".
+             2. For the sand sale orders the sales channel is "POS_SALES_CHANNEL" we need such orders to go from the normal flow
+                therefore we need to add the shipment method parameter in the service parameters.
+                a) First for POS orders: we configure includeSalesChannel as "POS_SALES_CHANNEL" and includeShipmentMethod as "POS_COMPLETED"
+                b) Second for all other orders: we configure excludeSalesChannel as "POS_SALES_CHANNEL" and excludeShipmentMethod as "POS_COMPLETED"
+            -->
+            <parameter name="includeSalesChannel">
                 <description>Parameter to fetch Order details for specific sales channel</description>
+            </parameter>
+            <parameter name="excludeSalesChannel">
+                <description>Parameter to exclude the Orders from the specific sales channel</description>
+            </parameter>
+            <parameter name="includeShipmentMethod">
+                <description>Parameter to fetch Order details for specific shipment method</description>
+            </parameter>
+            <parameter name="excludeShipmentMethod">
+                <description>Parameter to exclude the Orders from the specific shipment method</description>
             </parameter>
         </in-parameters>
         <actions>
             <set field="nowDate" from="ec.user.nowTimestamp"/>
-            <log message="Generating Create Orders Feed file of HotWax for Order ${orderId} at time ${nowDate}"/>
+            <log message="Generating Order Feed file for Order ${orderId} at time ${nowDate}"/>
             <!-- Prepare csv File Path -->
             <set field="contentRoot" from="ec.user.getPreference('mantle.content.root') ?: 'dbresource://datamanager'"/>
             <set field="csvFilePathRef" value="${contentRoot}/NetsuiteOrderFeed/CreateOrderItemsFeed-${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd-HH-mm-ss', null, TimeZone.getDefault())}.csv"/>
