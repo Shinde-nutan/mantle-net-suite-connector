@@ -1,6 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/service-definition-3.xsd">
     <service verb="prepare" noun="OrdersFeedDataForNetSuite">
+        <!--
+        This service prepares the order and order item details for eligible orders that need to be
+        exported to NetSuite. The service fetches order data from the `OrdersDetailsForNetSuiteView`
+        and order item data from the `OrderItemsForNetSuiteView`. It then prepares a consolidated
+        map containing both the order-level details and the associated order items. This map is
+        returned as `orderMap` which will be used in further processing.
+
+        - To retrieve and compile order details and corresponding order item details for NetSuite integration.
+        - If no eligible order items are found, the service terminates early, returning an empty order map and logging a message.
+        - If order items exist, they are added to a list and merged with the order details to create a final map (`orderMap`) which contains
+         both the order-level information and associated items.
+        - The service is executed for each order individually.
+
+        TODO: Handle the scenario for custom gift cards, as described in the view. Custom gift cards may need special processing or data handling to ensure correct integration with NetSuite.
+        -->
         <in-parameters>
             <parameter name="orderId">
                 <description>Parameter to fetch Order details for a specific orderId.</description>
@@ -71,7 +86,13 @@
                 processedOrderMap.remove("shippingAreaCode")
                 processedOrderMap.remove("shippingContactNumber")
 
-                // Logic to use shipping address as billing address if billing details are missing
+                /*
+                Logic to use shipping address as billing address if billing details are missing
+                The purpose of this logic is to handle scenarios where the billing address is missing from the order data.
+                In such cases, we use the shipping address as a fallback to ensure that we still have a valid billing address
+                available to create the order in NetSuite. A country is a required field for NetSuite order creation,
+                */
+
                 if (!orderMap.billingContactMechId && orderMap.shippingContactMachId) {
                     log.info("Billing address is missing. Using shipping address as billing address.");
                     processedOrderMap.put("billingAddress1", orderMap.shippingAddress1);
@@ -82,6 +103,23 @@
                     processedOrderMap.put("billingPostalCode", orderMap.shippingPostalCode);
                 }
             ]]></script>
+
+            <!--
+            we need to ensure that **only non-refunded gift card payments** are included
+            in the total gift card payment amount for an order. This is critical to maintain the accuracy of payment
+            tracking and avoid over-reporting the payment total when a gift card transaction has been refunded.
+
+            **Problem When Refunded Gift Card Payments are Not Excluded**:
+            Without filtering out refunded gift card payments, we risk including **invalid or duplicate payment records**
+            in the order’s total gift card payment. For example, a gift card transaction might fail, causing a refund record
+            to be created, but due to multiple records being generated for the same failed transaction, the order’s total
+            could incorrectly reflect the refunded amount. This could lead to discrepancies in payment reporting, affecting
+            both financial reconciliation and downstream systems like NetSuite.
+
+            - **Gift Card Payments**: We identify gift card payments by checking for transactions where the `paymentMethodTypeId` is `EXT_GIFT_CARD`. This ensures we are processing only gift card payments.
+            - **Refunded Gift Cards**: Refunds are identified by the presence of a `parentRefNumber` field on a gift card payment. The `parentRefNumber` links the payment to a previous transaction, indicating that this is a refund of a previously processed gift card payment.
+            - **Non-Refunded Payments**: After identifying refunded payments, we sum up the gift card payments that **do not have a corresponding refund**. This is done by comparing the `manualRefNumber` of each gift card payment against a list of refunded transactions.
+            -->
 
             <!-- Process Gift Card Payments -->
             <entity-find entity-name="org.apache.ofbiz.order.order.OrderPaymentPreference" list="GiftCardPaymentList">
@@ -97,32 +135,42 @@
                 def manualRefSet = new HashSet()
                 def refundedSet = new HashSet()
 
+                // Identify refunded gift card payments by checking the parent reference number
                 for (giftCardPayment in GiftCardPaymentList) {
                     if (giftCardPayment.parentRefNumber) {
-                        refundedSet.add(giftCardPayment.parentRefNumber)
+                        refundedSet.add(giftCardPayment.parentRefNumber) // Mark as refunded if a parentRefNumber exists
                     }
                 }
 
+                // Sum amounts of non-refunded gift cards, ensuring we don't double-count gift cards
                 for (giftCardPayment in GiftCardPaymentList) {
                     if (!refundedSet.contains(giftCardPayment.manualRefNumber) && !manualRefSet.contains(giftCardPayment.manualRefNumber)) {
                         totalNonRefundedGiftCardAmount += giftCardPayment.amount
-                        manualRefSet.add(giftCardPayment.manualRefNumber)
+                        manualRefSet.add(giftCardPayment.manualRefNumber) // Avoid double-counting gift cards
                     }
                 }
-            ]]></script>
 
-            <!-- Add Gift Card Amount to the Order Map -->
-            <script><![CDATA[
                 processedOrderMap.put("HCGiftCardPayment", totalNonRefundedGiftCardAmount)
-                processedOrderMap.put("taxCode", "AVATAX")
-                if ("POS Channel" != orderMap.salesChannel){
+
+                // Set the tax code for the order
+                processedOrderMap.put("taxCode", "AVATAX") // TODO: Currently setting a hardcoded tax code "AVATAX"
+
+                // Set the shipping tax code based on sales channel
+                if ("POS Channel" != orderMap.salesChannel) {
                     processedOrderMap.put("shippingTaxCode", "AVATAX")
-                }
-                else{
+                } else {
                     processedOrderMap.put("shippingTaxCode", "")
                 }
             ]]></script>
-            
+            <!--
+            TODO:
+            - Currently, the tax code is hardcoded as "AVATAX". This should be made dynamic based on business requirements.
+              It can be changed in the future to reflect different tax codes as needed.
+            - For Digital Goods, the tax code is sent as "NOT-TAXABLE" to NetSuite.
+              The current hardcoded "AVATAX" may not be suitable for all product types.
+            - We can create the record in integration type mapping based on the product types.
+            -->
+
             <!-- Process Order Items -->
             <set field="orderItemList" from="orderMap.orderItems"/>
             <script><![CDATA[ List<Map<String, Object>> processedOrderItemList = new ArrayList<>(); ]]></script>
