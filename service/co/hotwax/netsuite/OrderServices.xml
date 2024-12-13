@@ -166,7 +166,7 @@
             TODO:
             - Currently, the tax code is hardcoded as "AVATAX". This should be made dynamic based on business requirements.
               It can be changed in the future to reflect different tax codes as needed.
-            - For Digital Goods, the tax code is sent as "NOT-TAXABLE" to NetSuite.
+            - For Digital Goods, the tax code is sent as "-Not Taxable-" to NetSuite.(in some cases vary based on the )
               The current hardcoded "AVATAX" may not be suitable for all product types.
             - We can create the record in integration type mapping based on the product types.
             -->
@@ -183,8 +183,23 @@
                     processedOrderItem.remove("itemStatus");
                     processedOrderItem.put("orderLineId", processedOrderItem.orderItemSeqId)
                     processedOrderItem.put("priceLevel", "custom")
-
                 ]]></script>
+                <!--
+                - The price level is a required field to determine the pricing tier for an order item.
+                - We fetch the price level from two sources currently (existing flow):
+                    1. **Integration Type Mapping**: This is used when a pre-defined mapping exists between the system and an external integration.
+                    2. **Product Store Setting Entity**: This is utilized when price levels vary based on the product store's configuration.
+                        We are using the product store setting because
+                        For some clients, the price level may vary based on different seasons or promotions (e.g., they may change the price level during sales or other events).
+                - Or the price level defaults to "custom," as per the business requirements.
+
+                TODO:
+                - We need to use a single entity to fetch the detail of the price level to make it generic.
+                - The **Product Store Setting** is the preferred source for fetching the price level because:
+                    - It supports `fromDate` and `thruDate`, making it easier to store and retrieve multiple mappings for different time periods.
+                - Using a single source simplifies the logic and ensures consistent handling of price levels.
+                - Validate the "custom" default setting to ensure it aligns with evolving client requirements.
+                -->
 
                 <!-- Map Shipping Method -->
                 <entity-find entity-name="co.hotwax.integration.IntegrationTypeMappingAndEnum" list="ShippingMethodMappingList">
@@ -197,7 +212,17 @@
                         processedOrderItem.remove("shipmentMethodTypeId")
                     ]]></script>
                     <else>
-                        <!--TODO: currently setting the shipment method as empty as in case of pos_completed method we does not have itm available-->
+
+                        <!--Case: Digital Goods
+                        - Digital goods are imported into OMS with a default shipping method (e.g., "STANDARD").
+                        - If processed using the existing logic, digital goods may incorrectly inherit this shipping method.
+                        TODO:
+                        - For orders consisting solely of digital goods we need to handle this in the custom groovy logic.
+                            - The `shippingMethod` is either hardcoded or set as empty per the client’s custom requirement.
+                        -->
+
+                        <!--Currently setting the shipment method as empty as in case of pos_completed method we does not have itm available
+                        We can handle this in custom groovy if needed.-->
                         <script><![CDATA[
                         processedOrderItem.put("shippingMethod", "")
                         processedOrderItem.remove("shipmentMethodTypeId")
