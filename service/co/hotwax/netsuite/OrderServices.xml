@@ -229,7 +229,28 @@
                     ]]></script>
                     </else>
                 </if>
+                <!--
+                - This logic retrieves the department value by mapping the `facilityId` from the order item to the corresponding department identifier (`idValue`).
+                - The mapping is fetched from the `FacilityIdentification` entity with the following conditions:
+                    - `facilityId` matches the `location` field in the `orderItem`.
+                    - `facilityIdenTypeId` is set to "ORDR_ORGN_DPT" (indicating the department associated with the facility).
 
+                Case: POS Orders
+                - The department is specifically mapped for orders originating from the "POS Channel".
+                - If the mapping is successful, the first matched `idValue` is set as the `department` in the processed order item.
+
+                order other than POS:
+                - We does not have the location associated with it.
+                - The logic for setting the `department` may vary based on client-specific requirements.
+                - For non-POS orders (e.g., web orders), the department logic might differ and require custom mapping in groovy.
+
+                Custom Handling:
+                - The `department` field is overwritten in the custom Groovy service for client-specific scenarios.
+                - This is necessary as the location is associated only with POS orders, and for other order types, the logic must adapt to meet the client’s requirements.
+                - For example:
+                    - Certain clients may require a default department for specific order types.
+                    - Others might base the department on additional fields like the product category or sales region.
+                -->
                 <entity-find entity-name="co.hotwax.facility.FacilityIdentification" list="facilityIdentificationList">
                     <econdition field-name="facilityId" from="orderItem.location"/>
                     <econdition field-name="facilityIdenTypeId" value="ORDR_ORGN_DPT"/>
@@ -257,8 +278,16 @@
                         <set field="totalPromotionAmount" from="totalPromotionAmount + adjustment.amount"/>
                     </iterate>
 
-                    <!-- Duplicate Item for Promotion -->
-                    <!--TODO: currently making the copy as-is from the original item map need to re-visit this -->
+                    <!--
+                    - A duplicate item map is created to represent the promotional discount as a separate row in the processed order item list.
+                    - Key updates in the duplicate map:
+                        - `price` is set to the total promotional amount.
+                        - A custom field, `isDiscountRow`, is set to "true" to distinguish this row as a promotional discount.
+
+                    TODO:
+                    - Currently, the promotional discount item is created as an exact copy of the original item, except for the `price` and `isDiscountRow` fields.
+                    - Revisit this logic to ensure that only relevant fields are copied or modified.
+                    -->
                     <script><![CDATA[
                         Map<String, Object> promoOrderItemDetail = new HashMap<>(processedOrderItem);
                         promoOrderItemDetail.put("price", totalPromotionAmount);
@@ -296,14 +325,15 @@
             <parameter name="thruOrderDate">
                 <description>Parameter to fetch Order details after specific order date</description>
             </parameter>
-            <!--This parameters are required to be configured in the service for the following cases:
-             1. when we schedule this job twice in an instance
-                a) First for POS orders: where we include the orders of "POS_SALES_CHANNEL"
-                b) Second for all other orders: where we exclude the orders from the "POS_SALES_CHANNEL".
-             2. For the sand sale orders the sales channel is "POS_SALES_CHANNEL" we need such orders to go from the normal flow
-                therefore we need to add the shipment method parameter in the service parameters.
-                a) First for POS orders: we configure includeSalesChannel as "POS_SALES_CHANNEL" and includeShipmentMethod as "POS_COMPLETED"
-                b) Second for all other orders: we configure excludeSalesChannel as "POS_SALES_CHANNEL" and excludeShipmentMethod as "POS_COMPLETED"
+            <!-- These parameters are required to configure the service for the following scenarios:
+            1. When scheduling this job twice in an instance:
+               a) For POS orders: include orders with "POS_SALES_CHANNEL".
+               b) For all other orders: exclude orders from the "POS_SALES_CHANNEL".
+            2. For sand sale orders:
+               - These orders belong to the "POS_SALES_CHANNEL" but need to follow the normal flow.
+               - To achieve this, we use shipment method parameters in addition to sales channel parameters:
+                 a) For POS orders: configure includeSalesChannel as "POS_SALES_CHANNEL" and includeShipmentMethod as "POS_COMPLETED".
+                 b) For all other orders: configure excludeSalesChannel as "POS_SALES_CHANNEL" and excludeShipmentMethod as "POS_COMPLETED".
             -->
             <parameter name="includeSalesChannel">
                 <description>Parameter to fetch Order details for specific sales channel</description>
@@ -371,21 +401,26 @@
                 <if condition="orderMap">
                     <service-call name="co.hotwax.netsuite.OrderServices.add#BusinessLogicInFeedData" in-map="[orderMap:orderMap]"
                         out-map="orderMapOut"/>
-
+                    <!-- Find the System Message Type Parameter based on the systemMessageTypeId and parameterName.
+                    This will retrieve the Groovy script resource path if configured.
+                    -->
                     <entity-find-one entity-name="moqui.service.message.SystemMessageTypeParameter" value-field="groovyFileResource">
                         <field-map field-name="systemMessageTypeId" from="systemMessageTypeId"/>
                         <field-map field-name="parameterName" value="resourcePath"/>
                     </entity-find-one>
+                    <!-- Check if the Groovy file resource is available. -->
                     <if condition="groovyFileResource">
+                        <!-- Set the scriptPath using the retrieved parameterValue from the entity find operation. -->
                         <set field="scriptPath" from="groovyFileResource.parameterValue"/>
+                        <!-- Execute the Groovy script located at the scriptPath and store the result in the context. -->
                         <script>
                             Object result = ec.resource.script(scriptPath, null)
                             context.result = result
                         </script>
-                        <else>
-                            <log message="No groovy file found"/>
-                            <set field="result" from="orderMapOut.orderMapDetail"/>
-                        </else>
+                    <else>
+                        <!-- If no Groovy file resource is found, fallback to using the default orderMapDetail. -->
+                        <set field="result" from="orderMapOut.orderMapDetail"/>
+                    </else>
                     </if>
                     <script>
                         def order = context.get("result")
