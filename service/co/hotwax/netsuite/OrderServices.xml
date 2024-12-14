@@ -258,9 +258,14 @@
                 </entity-find>
 
                 <if condition="!facilityIdentificationList.isEmpty() &amp;&amp; 'POS Channel' == orderMap.salesChannel">
-                    <script><![CDATA[
-                        processedOrderItem.put("department", facilityIdentificationList[0].idValue)
-                    ]]></script>
+                    <script>processedOrderItem.put("department", facilityIdentificationList[0].idValue)</script>
+                    <else>
+                        <!--TODO: currently setting the department as empty for orders other then POS orders
+                         this is handled in custom groovy script. -->
+                        <script><![CDATA[
+                            processedOrderItem.put("department", "")
+                        ]]></script>
+                    </else>
                 </if>
 
                 <script>processedOrderItemList.add(processedOrderItem);</script>
@@ -356,8 +361,11 @@
             <set field="csvFilePathRef" value="${contentRoot}/NetsuiteOrderFeed/CreateOrderItemsFeed-${ec.l10n.format(ec.user.nowTimestamp, 'yyyy-MM-dd-HH-mm-ss', null, TimeZone.getDefault())}.csv"/>
             <set field="csvFilePath" from="ec.resource.getLocationReference(csvFilePathRef).getUri().getPath()"/>
 
+            <!--TODO: Here currently the view used to get the eligible orders for the create feed does not have the shipment method
+                need to figure out how we can put the checks for include and exclude shipment method.
+            -->
             <script>
-
+                import co.hotwax.netsuite.helper.CsvHelper
                 import org.apache.commons.csv.CSVFormat
                 import org.apache.commons.csv.CSVPrinter
                 import java.nio.file.Files
@@ -375,7 +383,8 @@
 
                 netsuiteOrders_find = ec.entity.find("co.hotwax.order.EligibleOrdersForNetSuiteView")
                 if(orderId) netsuiteOrders_find.condition("orderId", orderId)
-                if(salesChannel) netsuiteOrders_find.condition("salesChannelEnumId", salesChannel)
+                if(includeSalesChannel) netsuiteOrders_find.condition("salesChannelEnumId", includeSalesChannel)
+                if(excludeSalesChannel) netsuiteOrders_find.condition(ec.entity.conditionFactory.makeCondition( "salesChannexcludeSalesChannelel", EntityCondition.ComparisonOperator.NOT_IN, excludeSalesChannel, true))
                 if(fromOrderDate) netsuiteOrders_find.condition("orderDate", EntityCondition.ComparisonOperator.GREATER_THAN, fromOrderDate)
                 if(thruOrderDate) netsuiteOrders_find.condition("orderDate", EntityCondition.ComparisonOperator.LESS_THAN, fromOrderDate)
 
@@ -442,15 +451,18 @@
 
                         // Dynamically determine headers in the first iteration
                         if (!csvHeaders) {
-                            csvHeaders = flattenedOrders[0].keySet().collect { it as String }
+                            Headers = flattenedOrders[0].keySet().collect { it as String }
+                            csvHeaders = CsvHelper.formatHeaders(Headers) // Call the Java helper method
                             csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withHeader(csvHeaders as String[]))
                         }
 
                         // Write rows to the CSV
                         if (csvPrinter  &amp;&amp; !flattenedOrders.isEmpty()) {
                             System.out.println("writing the data in csv file")
+                            // Process orders and reorder JSON keys headers
                             flattenedOrders.each { record ->
-                                csvPrinter.printRecord(record.values())
+                                def orderedRecord = Headers.collect { key -> record[key] ?: "" }
+                                csvPrinter.printRecord(orderedRecord)
                             }
                         }
                     </script>

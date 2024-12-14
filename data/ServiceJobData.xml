@@ -8,6 +8,9 @@
         <parameters parameterName="orderId" parameterValue=""/>
         <parameters parameterName="fromDate" parameterValue=""/>
         <parameters parameterName="thruDate" parameterValue=""/>
-        <parameters parameterName="salesChannel" parameterValue=""/>
+        <parameters parameterName="includeSalesChannel" parameterValue=""/>
+        <parameters parameterName="excludeSalesChannel" parameterValue=""/>
+        <parameters parameterName="includeShipmentMethod" parameterValue=""/>
+        <parameters parameterName="excludeShipmentMethod" parameterValue=""/>
     </moqui.service.job.ServiceJob>
 </entity-facade-xml>
