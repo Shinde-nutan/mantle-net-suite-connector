@@ -6,9 +6,126 @@
         <parameters parameterName="systemMessageTypeId" parameterValue=""/>
         <parameters parameterName="systemMessageRemoteId" parameterValue=""/>
         <parameters parameterName="orderId" parameterValue=""/>
-        <parameters parameterName="fromDate" parameterValue=""/>
-        <parameters parameterName="thruDate" parameterValue=""/>
+        <parameters parameterName="fromOrderDate" parameterValue=""/>
+        <parameters parameterName="thruOrderDate" parameterValue=""/>
         <parameters parameterName="includeShipmentMethod" parameterValue=""/>
         <parameters parameterName="excludeShipmentMethod" parameterValue=""/>
     </moqui.service.job.ServiceJob>
+
+
+
+
+
+<moqui.resource.DbResource filename="netsuite" isFile="N" resourceId="Netsuite" parentResourceId=""/>
+<moqui.resource.DbResource filename="groovy" isFile="N" resourceId="Groovy" parentResourceId="Netsuite"/>
+<moqui.resource.DbResource filename="CreateOrderTransformation.groovy" isFile="Y" resourceId="CreateOrderTransformation" parentResourceId="Groovy">
+    <file mimeType="text/html" versionName="01" rootVersionName="01">
+        <fileData>
+            <![CDATA[
+       // Access the orderMapDetail from the input map
+Map orderMapDetail = orderMapOut.orderMapDetail
+
+// Retrieve all OrderIdentification records for the orderId
+EntityList orderIdentifications = ec.entity.find("co.hotwax.order.OrderIdentification")
+    .condition("orderId", orderMapDetail.orderId)
+    .list()
+
+// Initialize variables for Shopify Sales Order ID and Shopify Order Number
+String HCShopifySalesOrderId = ""
+String shopifyOrderNumber = ""
+
+// Filter the list to find specific order identification types
+orderIdentifications.each { orderIdentification ->
+    String orderIdentificationTypeId = orderIdentification.getString("orderIdentificationTypeId")
+    String idValue = orderIdentification.getString("idValue")
+
+    if (orderIdentificationTypeId == "SHOPIFY_ORD_ID") {
+        HCShopifySalesOrderId = idValue // Set the Shopify Sales Order ID
+    } else if (orderIdentificationTypeId == "SHOPIFY_ORD_NAME") {
+        shopifyOrderNumber = idValue // Set the Shopify Order Number
+    }
+}
+
+
+orderMapDetail.put("HCShopifySalesOrderId", HCShopifySalesOrderId)
+orderMapDetail.put("HCShopifyPOSOrderId", HCShopifySalesOrderId)
+orderMapDetail.put("shopifyOrderNumber", shopifyOrderNumber)
+
+EntityValue orderCommunicationEvent = ec.entity.find("co.hotwax.integration.CommunicationEventAndOrder")
+    .condition("orderId", orderMapDetail.orderId)
+    .condition("communicationEventTypeId", "ORDER_NOTE").one()
+
+// Order Note
+String orderNote = orderCommunicationEvent ? orderCommunicationEvent.getString("content") : ""
+// Remove the \n character from the orderNote
+orderNote = orderNote.replace("\n", " ")
+orderMapDetail.put("orderNote", orderNote)
+
+orderMapDetail.put("tag", "")
+
+// Loop through each order item
+orderMapDetail.orderItems.each { orderItem ->
+
+    if ("POS Channel" != orderMapDetail.salesChannel){
+        orderItem.put("department", "203")
+    }
+    EntityList facilityIdentificationList = ec.entity.find("co.hotwax.facility.FacilityIdentification")
+        .condition("facilityId", orderItem.facilityId).list()
+        .filterByDate("fromDate", "thruDate", ec.user.nowTimestamp)
+
+    // Initialize kreweSalesChannel
+    String kreweSalesChannel = "1" // Default value
+
+    // Filter for the specific condition and determine the sales channel
+    facilityIdentificationList.each { facilityIdentification ->
+        String facilityIdenTypeId = facilityIdentification.get("facilityIdenTypeId")
+        String idValue = facilityIdentification.get("idValue")
+
+        if (facilityIdenTypeId == "ORDR_ORGN_SLS_CHNL") {
+            if ("POS Channel" != orderMapDetail.salesChannel) {
+                kreweSalesChannel = idValue // Set the POS channel ID value
+            }
+        } else if (facilityIdenTypeId == "NETSUITE_ORDR_TYPE") {
+            orderType = idValue // Capture the order type from the facility identification
+        }
+    }
+
+    // Apply logic for Order Type
+    if ("POS Channel" == orderMapDetail.salesChannel) {
+        orderItem.orderType = orderType ?: orderMapDetail.salesChannel
+    } else {
+        orderItem.orderType = orderMapDetail.salesChannel
+        orderItem.remove("location")
+    }
+
+    orderItem.put("kreweSalesChannel" , kreweSalesChannel)
+
+    // Retrieve the facility based on order item location (orderItem.location is assumed to be the facilityId)
+    EntityValue facility = ec.entity.find("org.apache.ofbiz.product.facility.Facility")
+        .condition("facilityId", orderItem.location) // Assuming location is the facilityId
+        .one()
+
+    // Initialize the subsidiary value
+        String subsidiary = "1" // Default value
+
+    // Check the facility's external_id and apply the CASE logic
+        if (facility) {
+            String externalId = facility.getString("externalId")
+            if (['376', '415'].contains(externalId)) {
+                subsidiary = "5"
+            }
+        }
+
+    // Add the subsidiary to the order item or other relevant data structure
+    orderItem.put("subsidiary" , subsidiary)
+}
+
+// Return the updated orderMapDetail
+orderData = orderMapDetail
+return orderData
+                ]]>
+        </fileData>
+        <histories versionName="01" previousVersionName="01"/>
+    </file>
+</moqui.resource.DbResource>
 </entity-facade-xml>
