@@ -162,7 +162,7 @@
         <alias name="orderName" field="orderName" entity-alias="OH"/>
         <alias name="orderId" field="orderId" entity-alias="OH"/>
         <alias name="date" field="orderDate" entity-alias="OH"/>
-        <alias name="customerId" field="idValue" entity-alias="PID"/>
+        <alias name="customer" field="idValue" entity-alias="PID"/>
         <alias name="salesChannel" field="description" entity-alias="SCENM"/>
         <alias name="shippingContactMechId" field="contactMechId" entity-alias="PAS"/>
         <alias name="addressee" field="toName" entity-alias="PAS"/>
@@ -187,8 +187,8 @@
         <alias name="billingContactNumber" field="contactNumber" entity-alias="TN"/>
         <alias name="billingAddressee" field="toName" entity-alias="PAS"/>
         <alias name="billingEmail" field="infoString" entity-alias="CMBE"/>
-        <alias name="Email" field="infoString" entity-alias="CMSE"/>
-        <alias name="ShippingCost" field="amount" entity-alias="OADJ"/>
+        <alias name="email" field="infoString" entity-alias="CMSE"/>
+        <alias name="shippingCost" field="amount" entity-alias="OADJ"/>
     </view-entity>
 
     <!--

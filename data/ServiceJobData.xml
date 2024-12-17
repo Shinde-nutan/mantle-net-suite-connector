@@ -45,8 +45,6 @@ orderIdentifications.each { orderIdentification ->
         shopifyOrderNumber = idValue // Set the Shopify Order Number
     }
 }
-
-
 orderMapDetail.put("HCShopifySalesOrderId", HCShopifySalesOrderId)
 orderMapDetail.put("HCShopifyPOSOrderId", HCShopifySalesOrderId)
 orderMapDetail.put("shopifyOrderNumber", shopifyOrderNumber)
@@ -63,12 +61,49 @@ orderMapDetail.put("orderNote", orderNote)
 
 orderMapDetail.put("tag", "")
 
+StringBuilder discountCodesBuilder = new StringBuilder()
+// Fetch eligible orders using the view (OrderItemAdjustmentAndAttribute)
+EntityList orderItemAdjustments = ec.entity.find("co.hotwax.order.OrderItemAdjustmentAndAttribute")
+    .condition("orderId", orderMapDetail.orderId)  // You can add more conditions as needed
+    .condition("orderAdjustmentTypeId", "EXT_PROMO_ADJUSTMENT") // Filter for the promo adjustment type
+    .condition("attrName", "discount_code")  // Ensure the attribute name is 'discount_code'
+    .list()
+
+// Initialize the fields for Discount Item and Rate
+String discountItem = ""
+BigDecimal totalRate = BigDecimal.ZERO
+
+// Loop through the adjustments and apply the logic for Discount Item and Rate
+orderItemAdjustments.each { orderItemAdjustment ->
+    // Get the discount code from the OrderAdjustmentAttribute (attrValue)
+    String discountCode = orderItemAdjustment.getString("attrValue")
+
+    if (discountCode) discountCodesBuilder.append(discountCodesBuilder.length() > 0 ? ", " : "").append(discountCode)
+    String discountCodes = discountCodesBuilder.toString()
+
+    // Check if the discount code exists in the ProductPromo entity
+    EntityList productPromo = ec.entity.find("org.apache.ofbiz.product.promo.ProductPromo")
+        .condition("promoName", discountCodes)
+        .list()
+
+    // If the promo code exists, use it as the Discount Item
+    if (productPromo) {
+        discountItem = discountCodes
+    } else {
+        discountItem = "SHOPIFY DISCOUNT"
+    }
+    // Sum the rate (amount) for each adjustment
+    BigDecimal adjustmentAmount = orderItemAdjustment.getBigDecimal("amount") ?: BigDecimal.ZERO
+    totalRate = totalRate.add(adjustmentAmount)
+}
+
 // Loop through each order item
 orderMapDetail.orderItems.each { orderItem ->
 
-    if ("POS Channel" != orderMapDetail.salesChannel){
-        orderItem.put("department", "203")
-    }
+    // Set the Discount Item and Rate for each item (can be adjusted per item if needed)
+    orderItem.put("discountItem", discountItem)
+    orderItem.put("rate", totalRate)
+
     EntityList facilityIdentificationList = ec.entity.find("co.hotwax.facility.FacilityIdentification")
         .condition("facilityId", orderItem.facilityId).list()
         .filterByDate("fromDate", "thruDate", ec.user.nowTimestamp)
@@ -95,7 +130,8 @@ orderMapDetail.orderItems.each { orderItem ->
         orderItem.orderType = orderType ?: orderMapDetail.salesChannel
     } else {
         orderItem.orderType = orderMapDetail.salesChannel
-        orderItem.remove("location")
+        orderItem.put("location", "")
+        orderItem.put("department", "203")
     }
 
     orderItem.put("kreweSalesChannel" , kreweSalesChannel)
@@ -118,6 +154,13 @@ orderMapDetail.orderItems.each { orderItem ->
 
     // Add the subsidiary to the order item or other relevant data structure
     orderItem.put("subsidiary" , subsidiary)
+
+    /* Set the default values for the orderLineId, item and price level for the discount amount row. */
+    if (orderItem.isDiscountRow) {
+        orderItem.put("orderLineId", "")
+        orderItem.put("item", "41006")
+        orderItem.put("priceLevel", "Custom")
+    }
 }
 
 // Return the updated orderMapDetail
