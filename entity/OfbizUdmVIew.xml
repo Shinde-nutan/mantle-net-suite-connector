@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one
+    or more contributor license agreements.  See the NOTICE file
+    distributed with this work for additional information
+    regarding copyright ownership.  The ASF licenses this file
+    to you under the Apache License, Version 2.0 (the
+    "License"); you may not use this file except in compliance
+    with the License.  You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+    Unless required by applicable law or agreed to in writing,
+    software distributed under the License is distributed on an
+    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, either express or implied.  See the License for the
+    specific language governing permissions and limitations
+    under the License.
+-->
+<entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/entity-definition-3.xsd">
+    <!-- we can shift this view into ofbiz-oms-udm component where all other generic views are created as IntegrationTypeMappingAndEnum view is not specific to netsuite. -->
+    <view-entity entity-name="IntegrationTypeMappingAndEnum" package="co.hotwax.integration">
+        <member-entity entity-alias="ITM" entity-name="co.hotwax.integration.IntegrationTypeMapping"/>
+        <member-entity entity-alias="ENUM" entity-name="moqui.basic.Enumeration" join-from-alias="ITM">
+            <key-map field-name="integrationTypeId"/>
+        </member-entity>150
+        <alias-all entity-alias="ITM"/>
+        <alias-all entity-alias="ENUM"/>
+        <alias name="enumDescription" field="description" entity-alias="ENUM"/>
+    </view-entity>
+
+    <!-- we can shift this view into ofbiz-oms-udm component where all other generic views are created as CommunicationEventAndOrder view is not specific to netsuite. -->
+    <view-entity entity-name="CommunicationEventAndOrder" package="co.hotwax.integration">
+        <member-entity entity-alias="CO" entity-name="org.apache.ofbiz.order.order.CommunicationEventOrder"/>
+        <member-entity entity-alias="CE" entity-name="org.apache.ofbiz.party.communication.CommunicationEvent" join-from-alias="CO">
+            <key-map field-name="communicationEventId"/>
+        </member-entity>
+        <alias-all entity-alias="CO"/>
+        <alias-all entity-alias="CE"/>
+    </view-entity>
+
+</entities>
