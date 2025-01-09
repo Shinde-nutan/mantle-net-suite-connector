@@ -17,6 +17,10 @@
 
 ### System message type
 - PosCashOrderItemsFeed 
+  - Import the data from the respective custom repository to add the groovy file in for create order feed.
+  - Add the path of the groovy file in the system message type parameter.
 - NetSuiteOrderItemsFeed
+  - Import the data from the respective custom repository to add the groovy file in for create order feed.
+  - Add the path of the groovy file in the system message type parameter.
 - GenerateCustomerDepositFeed
 - CreateNetsuiteCustomerFeed

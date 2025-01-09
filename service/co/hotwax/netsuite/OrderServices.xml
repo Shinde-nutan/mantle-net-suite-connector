@@ -44,9 +44,6 @@
                  productStoreId:productStoreId], false)"/>
             <set field="csvFilePath" from="ec.resource.getLocationReference(csvFilePathRef).getUri().getPath()"/>
 
-            <!--TODO: Here currently the view used to get the eligible orders for the create feed does not have the shipment method
-                need to figure out how we can put the checks for include and exclude shipment method.
-            -->
             <script>
                 import org.apache.commons.csv.CSVFormat
                 import org.apache.commons.csv.CSVPrinter

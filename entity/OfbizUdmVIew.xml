@@ -21,10 +21,9 @@
         <member-entity entity-alias="ITM" entity-name="co.hotwax.integration.IntegrationTypeMapping"/>
         <member-entity entity-alias="ENUM" entity-name="moqui.basic.Enumeration" join-from-alias="ITM">
             <key-map field-name="integrationTypeId"/>
-        </member-entity>150
+        </member-entity>
         <alias-all entity-alias="ITM"/>
         <alias-all entity-alias="ENUM"/>
-        <alias name="enumDescription" field="description" entity-alias="ENUM"/>
     </view-entity>
 
     <!-- we can shift this view into ofbiz-oms-udm component where all other generic views are created as CommunicationEventAndOrder view is not specific to netsuite. -->
