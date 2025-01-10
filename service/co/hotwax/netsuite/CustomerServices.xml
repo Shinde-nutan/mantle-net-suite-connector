@@ -38,6 +38,19 @@
                     csvFile.parentFile.mkdirs()
                 }
 
+                // Fetch default email and phone
+                def defaultEmailMapping = ec.entity.find("IntegrationTypeMapping")
+                    .condition("integrationTypeId", "NETSUITE_CUST_DEF_EMAIL")
+                    .condition("mappingKey", "EMAIL")
+                    .one()
+                def defaultEmail = defaultEmailMapping?.integrationValue ?: "default@example.com"
+
+                def defaultPhoneMapping = ec.entity.find("IntegrationTypeMapping")
+                    .condition("integrationTypeId", "NETSUITE_CUST_DEF_PHONE")
+                    .condition("mappingKey", "PHONE")
+                    .one()
+                def defaultPhone = defaultPhoneMapping?.integrationValue ?: "+0000000000"
+
                 Files.newBufferedWriter(Paths.get(csvFilePath), StandardCharsets.UTF_8).withCloseable { writer ->
                 def csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT)
 
@@ -52,7 +65,7 @@
                         return "No eligible customer at ${nowDate}, not generating the feed file."
                     }
 
-                    // Process and write customer data (streaming approach)
+                    // Process and write customer data
                     def csvHeaders = null
                     netsuiteCustomer_itr.each { customer ->
                         def customerData = [:]
@@ -66,7 +79,8 @@
                         customerData.firstName = (customer.firstName?.length() > 13 ? customer.firstName.substring(0, 13) : customer.firstName) ?: "X"
                         customerData.lastName = (customer.lastName?.length() > 13 ? customer.lastName.substring(0, 13) : customer.lastName) ?: "X"
 
-                        customerData.phone = [customer.countryCode, customer.areaCode, customer.contactNumber].findAll { it }?.join(' ') ?: null
+                        customerData.phone = [customer.countryCode, customer.areaCode, customer.contactNumber].findAll { it }?.join(' ') ?: defaultPhone
+                        customerData.email = customer.email ?: defaultEmail
 
                         // Remove unnecessary fields
                         customerData.remove("countryCode")
@@ -86,13 +100,13 @@
                     }
                 }
             </script>
-            <!-- Save the Json Feed File path in System Message messageText -->
+            <!-- Save the CSV Feed File path in System Message messageText -->
             <service-call name="org.moqui.impl.SystemMessageServices.queue#SystemMessage"
                 in-map="[systemMessageTypeId:systemMessageTypeId, systemMessageRemoteId:systemMessageRemoteId,
                 messageText:csvFilePath]" out-map="FeedSysMsgOut"/>
 
-            <log message="Generating  Order Items Feed file with type ${systemMessageTypeId} and
-                remote ${systemMessageRemoteId} saved response in messages ${FeedSysMsgOut.systemMessageId}"/>
+            <log message="Generated Customer Feed file with type ${systemMessageTypeId} and
+            remote ${systemMessageRemoteId}, saved response in messages ${FeedSysMsgOut.systemMessageId}"/>
         </actions>
     </service>
     <service verb="generate" noun="CustomerDepositFeed" authenticate="anonymous-all" transaction-timeout="7200">

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<entity-facade-xml type="seed">
+    <Enumeration enumCode="NETSUITE_TAX_CODE" enumId="NETSUITE_TAX_CODE" enumName="Netsuite Tax codes" enumTypeId="NETSUITE" />
+    <IntegrationTypeMapping integrationTypeId="NETSUITE_TAX_CODE" mappingKey="DIGITAL_GOOD" mappingValue="-Not Taxable-" description="Tax code for digital goods" />
+    <IntegrationTypeMapping integrationTypeId="NETSUITE_TAX_CODE" mappingKey="GIFT_CARD" mappingValue="-Not Taxable-" description="Tax code for gift cards" />
+    <IntegrationTypeMapping integrationTypeId="NETSUITE_TAX_CODE" mappingKey="DEFAULT" mappingValue="AVATAX" description="Fallback tax code for unmapped product types" />
+
+    <Enumeration enumCode="NS_CUST_DEF_EMAIL" enumId="NS_CUST_DEF_EMAIL" enumName="Netsuite customer default email" enumTypeId="NETSUITE" />
+    <IntegrationTypeMapping integrationTypeId="NS_CUST_DEF_EMAIL" mappingKey="EMAIL" mappingValue="default@example.com" description="Default email address for customers" />
+    <Enumeration enumCode="NS_CUST_DEF_PHONE" enumId="NETSUITE_CUST_DEF_PHONE" enumName="Netsuite customer default phone" enumTypeId="NETSUITE"/>
+    <IntegrationTypeMapping integrationTypeId="NS_CUST_DEF_PHONE" mappingKey="PHONE" mappingValue="+0000000000" description="Default phone number for customers" />
+
+
+</entity-facade-xml>
+
