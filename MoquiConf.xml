@@ -5,4 +5,11 @@
     <cache-list warm-on-start="false">
         <cache name="json.validation.schema" value-type="Map"/>
     </cache-list>
+
+    <screen-facade>
+        <screen location="component://webroot/screen/webroot/apps.xml">
+            <subscreens-item name="netsuite" menu-title="NetSuite"  menu-index="99" location="component://mantle-netsuite-connector/screen/Netsuite.xml"/>
+        </screen>
+    </screen-facade>
+
 </moqui-conf>

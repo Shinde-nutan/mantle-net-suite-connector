@@ -707,6 +707,8 @@
                 import org.moqui.entity.EntityFind
                 import org.moqui.entity.EntityCondition
                 import org.moqui.entity.EntityConditionFactory;
+                import org.moqui.impl.entity.EntityDefinition.MasterDetail
+                import org.moqui.impl.entity.EntityDefinition.MasterDefinition
 
                 def entityFind = ec.entity.find("org.apache.ofbiz.order.order.OrderHeader");
 
@@ -716,13 +718,13 @@
                 // Add member entities
                 dynamicView.addMemberEntity("OH", "org.apache.ofbiz.order.order.OrderHeader", null, null, null)
                 dynamicView.addMemberEntity("OID", "co.hotwax.order.OrderIdentification", "OH", true,
-                    ["orderId": "orderId"], ["orderIdentificationTypeId": "NETSUITE_ORDER_ID", "date-filter": ""], null)
+                ["orderId": "orderId"], [["field-name":"orderIdentificationTypeId", "value":"NETSUITE_ORDER_ID"], ["date-filter": ""]], null)
 
                 dynamicView.addMemberEntity("ODR", "org.apache.ofbiz.order.order.OrderRole", "OH", true,
-                    ["orderId": "orderId"], ["roleTypeId": "BILL_TO_CUSTOMER"], null)
+                    ["orderId": "orderId"], [["field-name":"roleTypeId", "value":"BILL_TO_CUSTOMER"]], null)
 
                 dynamicView.addMemberEntity("PID", "org.apache.ofbiz.party.party.PartyIdentification", "ODR", false,
-                    ["partyId": "partyId"], ["partyIdentificationTypeId": "NETSUITE_CUSTOMER_ID"], null)
+                    ["partyId": "partyId"], [["field-name":"partyIdentificationTypeId", "value":"NETSUITE_CUSTOMER_ID"]], null)
 
                 dynamicView.addMemberEntity("OI", "org.apache.ofbiz.order.order.OrderItem", "OH", false,
                     ["orderId": "orderId"])
@@ -738,8 +740,6 @@
                 dynamicView.addAliasAll("OI", null)
                 dynamicView.addAliasAll("OISG", null)
                 dynamicView.addAlias("PID", "partyId")
-                dynamicView.addAlias("OID", "netsuiteOrderId","idValue", null)
-                dynamicView.addAlias("INVORD", "invalidOrderId", "orderId", null)
 
                  dynamicView.addWhereConditions([
                     ["entity-alias": "OH", "field-name": "orderTypeId", "operator": "equals", "value": "SALES_ORDER"],
@@ -751,6 +751,40 @@
 
                def eligibleOrders = entityFind.list()
             ]]></script>
+
+            <set field="selectedEntity" value="org.apache.ofbiz.order.order.OrderHeader"/>
+
+            <!-- Get Entity Definition -->
+            <set field="entityDefinition" from="ec.entity.getEntityDefinition(selectedEntity)"/>
+
+            <!-- Get all master definitions -->
+            <set field="masterDefinitions" from="entityDefinition.getMasterDefinitionMap()"/>
+            <set field="relatedEntities" from="[]"/>
+
+            <script><![CDATA[
+
+            // Recursive function to get all related entities
+            def getAllRelatedEntities(List<MasterDetail> details, Set<String> entityNames = new HashSet<>()) {
+            for (MasterDetail detail in details) {
+            entityNames.add(detail.relInfo.relatedEd.getFullEntityName()) // Add related entity name
+            getAllRelatedEntities(detail.internalDetailList, entityNames) // Recursively fetch related entities
+            }
+            return entityNames
+            }
+
+            // Collect all related entities across all masters
+            Set<String> allRelatedEntities = new HashSet<>()
+            for (MasterDefinition masterDef in masterDefinitions.values()) {
+            allRelatedEntities.addAll(getAllRelatedEntities(masterDef.detailList))
+            }
+
+            // Store related entities in context
+            relatedEntities.addAll(allRelatedEntities)
+        ]]></script>
+
+            <log message="=============relatedEntities: ${relatedEntities}"/>
         </actions>
     </service>
+
+
 </services>

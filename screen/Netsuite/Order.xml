@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+This software is in the public domain under CC0 1.0 Universal plus a
+Grant of Patent License.
+
+To the extent possible under law, the author(s) have dedicated all
+copyright and related and neighboring rights to this software to the
+public domain worldwide. This software is distributed without any
+warranty.
+
+You should have received a copy of the CC0 Public Domain Dedication
+along with this software (see the LICENSE.md file). If not, see
+<http://creativecommons.org/publicdomain/zero/1.0/>.
+-->
+<screen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://moqui.org/xsd/xml-screen-3.xsd"
+        default-menu-index="1" menu-image="fa fa-dashboard" menu-image-type="icon" require-authentication="anonymous-all">
+
+    <parameter name="orderId" value="1"/>
+    <actions>
+        <set field="selectedEntity" value="org.apache.ofbiz.order.order.OrderHeader"/>
+        <set field="entityDefinition" from="ec.entity.getEntityDefinition(selectedEntity)"/>
+        <set field="masterDefinitions" from="entityDefinition.getMasterDefinitionMap()"/>
+        <set field="relatedEntities" from="[]"/>
+        <script><![CDATA[
+            import org.moqui.impl.entity.EntityDefinition.MasterDetail
+            import org.moqui.impl.entity.EntityDefinition.MasterDefinition
+
+            def getAllRelatedEntities(List<MasterDetail> details, Set<String> entityNames = new HashSet<>()) {
+            for (MasterDetail detail in details) {
+                entityNames.add(detail.relInfo.relatedEd.getFullEntityName()) // Add related entity name
+                getAllRelatedEntities(detail.internalDetailList, entityNames) // Recursively fetch related entities
+            }
+                return entityNames
+            }
+            // Collect all related entities across all masters
+            Set<String> allRelatedEntities = new HashSet<>()
+            for (MasterDefinition masterDef in masterDefinitions.values()) {
+                allRelatedEntities.addAll(getAllRelatedEntities(masterDef.detailList))
+            }
+            // Store related entities in context
+            relatedEntities.addAll(allRelatedEntities)
+        ]]></script>
+    </actions>
+
+    <widgets>
+        <section-iterate name="RelatedEntity" list="relatedEntities" entry="relatedEntity">
+            <actions>
+                <entity-find entity-name="${relatedEntity}" list="RelatedDataList" cache="false">
+                    <econdition field-name="orderId" value="${orderId}"/>
+                </entity-find>
+            </actions>
+            <widgets>
+
+            </widgets>
+        </section-iterate>
+    </widgets>
+
+</screen>
