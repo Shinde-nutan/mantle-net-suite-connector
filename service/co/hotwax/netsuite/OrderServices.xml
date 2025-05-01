@@ -700,4 +700,57 @@
                 and remote ${sendSmrId} saved response in messages ${queueSystemMessageOut?.systemMessageId}"/>
         </actions>
     </service>
+    <service verb="generate" noun="OrderItemsFeedNew">
+        <actions>
+            <script><![CDATA[
+                import org.moqui.entity.EntityDynamicView
+                import org.moqui.entity.EntityFind
+                import org.moqui.entity.EntityCondition
+                import org.moqui.entity.EntityConditionFactory;
+
+                def entityFind = ec.entity.find("org.apache.ofbiz.order.order.OrderHeader");
+
+                // Create dynamic view entity
+                EntityDynamicView dynamicView = entityFind.makeEntityDynamicView()
+
+                // Add member entities
+                dynamicView.addMemberEntity("OH", "org.apache.ofbiz.order.order.OrderHeader", null, null, null)
+                dynamicView.addMemberEntity("OID", "co.hotwax.order.OrderIdentification", "OH", true,
+                    ["orderId": "orderId"], ["orderIdentificationTypeId": "NETSUITE_ORDER_ID", "date-filter": ""], null)
+
+                dynamicView.addMemberEntity("ODR", "org.apache.ofbiz.order.order.OrderRole", "OH", true,
+                    ["orderId": "orderId"], ["roleTypeId": "BILL_TO_CUSTOMER"], null)
+
+                dynamicView.addMemberEntity("PID", "org.apache.ofbiz.party.party.PartyIdentification", "ODR", false,
+                    ["partyId": "partyId"], ["partyIdentificationTypeId": "NETSUITE_CUSTOMER_ID"], null)
+
+                dynamicView.addMemberEntity("OI", "org.apache.ofbiz.order.order.OrderItem", "OH", false,
+                    ["orderId": "orderId"])
+
+                dynamicView.addMemberEntity("OISG", "org.apache.ofbiz.order.order.OrderItemShipGroup", "OI", false,
+                    ["orderId": "orderId", "shipGroupSeqId": "shipGroupSeqId"])
+
+                dynamicView.addMemberEntity("INVORD", "co.hotwax.netsuite.order.InvalidOrdersForNetsuite", "OH", true,
+                    ["orderId": "orderId"], null , "non-lateral" )
+
+
+                dynamicView.addAliasAll("OH", null)
+                dynamicView.addAliasAll("OI", null)
+                dynamicView.addAliasAll("OISG", null)
+                dynamicView.addAlias("PID", "partyId")
+                dynamicView.addAlias("OID", "netsuiteOrderId","idValue", null)
+                dynamicView.addAlias("INVORD", "invalidOrderId", "orderId", null)
+
+                 dynamicView.addWhereConditions([
+                    ["entity-alias": "OH", "field-name": "orderTypeId", "operator": "equals", "value": "SALES_ORDER"],
+                    ["entity-alias": "OID", "field-name": "orderId", "operator": "equals", "value": ""],
+                    ["entity-alias": "INVORD", "field-name": "orderId", "operator": "equals", "value": ""]
+                ])
+
+               logger.info("==dynamicView.getViewEntityNode()=====" + dynamicView.getViewEntityNode())
+
+               def eligibleOrders = entityFind.list()
+            ]]></script>
+        </actions>
+    </service>
 </services>
