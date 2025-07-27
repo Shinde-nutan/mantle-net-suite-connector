@@ -1,4 +1,4 @@
-package co.hotwax.netsuite
+package co.hotwax.netSuite
 
 import org.moqui.context.ExecutionContext
 import org.moqui.entity.EntityList
@@ -25,7 +25,6 @@ class NetSuiteMappingWorker {
     static String getIntegrationTypeMappingValue(ExecutionContext ec, String integrationTypeId, String mappingKey) {
         EntityValue mapping = ec.entity.find("co.hotwax.integration.IntegrationTypeMapping")
                 .condition([integrationTypeId: integrationTypeId, mappingKey: mappingKey])
-                .useCache(true)
                 .one()
         return mapping?.mappingValue
     }
@@ -38,9 +37,9 @@ class NetSuiteMappingWorker {
      */
     static String getProductId(ExecutionContext ec, String hcProductId) {
         EntityList gid = ec.entity.find("org.apache.ofbiz.product.product.GoodIdentification")
-                .condition([productId: hcProductId, goodIdentificationTypeEnumId: "NETSUITE_PRODUCT_ID"])
-                .list()
-                .filterByDate("fromDate", "thruDate", ec.user.nowTimestamp)
+            .condition([productId: hcProductId, goodIdentificationTypeId: "NETSUITE_PRODUCT_ID"])
+            .list()
+            .filterByDate("fromDate", "thruDate", ec.user.nowTimestamp)
         return gid?.first?.idValue
     }
 
@@ -53,11 +52,10 @@ class NetSuiteMappingWorker {
      */
     static String getFacilityIdentifications(ExecutionContext ec, String facilityId, String facilityIdenTypeId) {
         EntityList identifications = ec.entity.find("co.hotwax.facility.FacilityIdentification")
-                .condition("facilityId", facilityId)
-                .condition("facilityIdenTypeId", facilityIdenTypeId)
-                .useCache(true)
-                .list()
-                .filterByDate("fromDate", "thruDate", ec.user.nowTimestamp)
+            .condition("facilityId", facilityId)
+            .condition("facilityIdenTypeId", facilityIdenTypeId)
+            .list()
+            .filterByDate("fromDate", "thruDate", ec.user.nowTimestamp)
         return (identifications && !identifications.isEmpty()) ? identifications.first().idValue : null
     }
 
@@ -89,7 +87,7 @@ class NetSuiteMappingWorker {
     static BigDecimal getGiftCardPaymentTotal(ExecutionContext ec, String orderId) {
         def giftCardPayment = ec.entity.find("co.hotwax.netsuite.order.NonRefundedGiftCardPayment")
                 .condition("orderId", orderId)
-                .useCache(true).list()
+                .list()
 
         return giftCardPayment ? giftCardPayment[0].giftCardPaymentTotal : null
     }
@@ -217,8 +215,7 @@ class NetSuiteMappingWorker {
      */
     static String getOrderId(ExecutionContext ec, String hcorderId) {
         EntityList oid = ec.entity.find("co.hotwax.order.OrderIdentification")
-                .condition([orderId: hcorderId, orderIdentificationTypeEnumId: "NETSUITE_ORDER_ID"])
-                .useCache(true)
+                .condition([orderId: hcorderId, orderIdentificationTypeId: "NETSUITE_ORDER_ID"])
                 .list()
                 .filterByDate("fromDate", "thruDate", ec.user.nowTimestamp)
         return oid?.first?.idValue

@@ -4,9 +4,9 @@
     .useCache(true)
     .one()!>
 
-<#assign netsuiteProductId = Static["co.hotwax.netsuite.NetSuiteMappingWorker"].getProductId(ec, brokerOrderItem.productId)!>
-<#assign netsuiteOrderId = Static["co.hotwax.netsuite.NetSuiteMappingWorker"].getOrderId(ec, brokerOrderItem.orderId)!>
-<#assign netsuiteShipmentMethod = Static["co.hotwax.netsuite.NetSuiteMappingWorker"].getIntegrationTypeMappingValue(ec,'NETSUITE_SHP_MTHD', brokerOrderItem.shipmentMethodTypeId)!>
+<#assign netsuiteProductId = Static["co.hotwax.netSuite.NetSuiteMappingWorker"].getProductId(ec, brokerOrderItem.productId)!>
+<#assign netsuiteOrderId = Static["co.hotwax.netSuite.NetSuiteMappingWorker"].getOrderId(ec, brokerOrderItem.orderId)!>
+<#assign netsuiteShipmentMethod = Static["co.hotwax.netSuite.NetSuiteMappingWorker"].getIntegrationTypeMappingValue(ec,'NETSUITE_SHP_MTHD', brokerOrderItem.shipmentMethodTypeId)!>
 
 [{
   "lineId": "${brokerOrderItem.netsuiteItemLineId!''}",

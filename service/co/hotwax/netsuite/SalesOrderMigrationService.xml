@@ -53,7 +53,7 @@
                 import java.nio.file.Paths
                 import java.nio.charset.StandardCharsets
                 import org.moqui.entity.EntityCondition
-                import co.hotwax.netsuite.NetSuiteMappingWorker
+                import co.hotwax.netSuite.NetSuiteMappingWorker
                 import co.hotwax.util.CsvWriteHelper
 
                 findNetSuiteOrders = ec.entity.find("co.hotwax.netsuite.order.SalesOrderMigrationOrders")
